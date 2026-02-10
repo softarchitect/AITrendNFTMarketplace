@@ -1,0 +1,14 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "TrendMint721": {
+    "address": "0xa97a9dA0A4E1214E6784fCA0453A5cC141D0c7dA",
+    "deployer": "0xEC0152efFBe7C948f5567c31bdC23905Df9ab5F2",
+    "txHash": "0xa276a0e0b8586dabd33e24f5374797be7655df9b38c0b8b4fd9705b7d9f863da",
+    "constructorArgs": [
+      "TrendMint721",
+      "TREND",
+      "0xEC0152efFBe7C948f5567c31bdC23905Df9ab5F2"
+    ]
+  }
+}
