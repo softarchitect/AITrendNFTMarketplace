@@ -10,6 +10,13 @@ Milestone‑1 delivers an Ethereum-only **ERC‑721 Editions** contract plus tes
 - **Sepolia deploy & verify**: `docs/deployment/testnet-deploy.md`
 - **Contract code**: `contract/contracts/TrendMint721.sol`
 
+## Backend Services (Milestone‑2)
+
+Milestone‑2 delivers the backend automation and API surface for the Phase‑1 architecture.
+
+- **Milestone overview**: `docs/milestones/M2-ai-pipeline-backend-apis.md`
+- **Backend code**: `backend/`
+
 ### Deployed contract (Sepolia)
 
 - **Network**: Sepolia (chainId `11155111`)
@@ -60,6 +67,7 @@ npx hardhat verify --network sepolia <contractAddress> "TrendMint721" "TREND" <d
 ## Repo structure
 
 - `contract/`: Hardhat + TypeScript workspace
+- `backend/`: Express + TypeScript backend services (Milestone‑2)
 - `docs/`: Milestone and deployment documentation
 
 

@@ -1,0 +1,11 @@
+{
+  "order": {
+    "id": "wert_order_001"
+  },
+  "payment": {
+    "status": "failed"
+  },
+  "meta": {
+    "source": "sandbox-fixture"
+  }
+}

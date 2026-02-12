@@ -1,0 +1,47 @@
+{
+  "name": "trendmint-backend",
+  "version": "0.1.0",
+  "description": "TrendMint Milestone 2 backend services",
+  "main": "dist/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "demo:webhooks": "tsx scripts/demo-webhooks.ts",
+    "demo:webhooks:json": "tsx scripts/demo-webhooks-report.ts",
+    "evidence:m2": "tsx scripts/generate-m2-evidence.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:smoke:payments": "vitest run test/paymentAdapters.test.ts test/paymentWebhookFixtures.test.ts"
+  },
+  "keywords": [
+    "trendmint",
+    "nft",
+    "backend"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "ethers": "^6.16.0",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.2.3",
+    "@types/supertest": "^6.0.3",
+    "pino-pretty": "^13.1.3",
+    "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

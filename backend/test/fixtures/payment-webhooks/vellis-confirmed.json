@@ -1,0 +1,9 @@
+{
+  "event": {
+    "transactionId": "vellis_tx_001",
+    "status": "succeeded"
+  },
+  "meta": {
+    "source": "sandbox-fixture"
+  }
+}
