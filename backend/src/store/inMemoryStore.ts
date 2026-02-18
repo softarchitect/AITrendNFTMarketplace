@@ -115,6 +115,10 @@ export interface AdminControlsRecord {
   hourlyCap: number;
   pipelineEnabled: boolean;
   scheduleEnabled: boolean;
+  trendTopicLimit: number;
+  autoMintIntervalMinutes: number;
+  autoMintBatchSize: number;
+  dailyMinimumTarget: number;
 }
 
 export interface GatewaySettingsRecord {
@@ -232,7 +236,11 @@ export class InMemoryStore {
     dailyCap: 50,
     hourlyCap: 10,
     pipelineEnabled: true,
-    scheduleEnabled: true
+    scheduleEnabled: true,
+    trendTopicLimit: 3,
+    autoMintIntervalMinutes: 15,
+    autoMintBatchSize: 1,
+    dailyMinimumTarget: 0
   };
   public gatewaySettings: GatewaySettingsRecord = {
     provider: config.payment.provider,
@@ -385,7 +393,13 @@ export class InMemoryStore {
       this.mintCounters = snapshot.mintCounters;
     }
     if (snapshot.adminControls) {
-      this.adminControls = snapshot.adminControls;
+      this.adminControls = {
+        ...snapshot.adminControls,
+        trendTopicLimit: Math.max(1, Math.min(10, snapshot.adminControls.trendTopicLimit ?? 3)),
+        autoMintIntervalMinutes: Math.max(1, snapshot.adminControls.autoMintIntervalMinutes ?? 15),
+        autoMintBatchSize: Math.max(1, Math.min(10, snapshot.adminControls.autoMintBatchSize ?? 1)),
+        dailyMinimumTarget: Math.max(0, snapshot.adminControls.dailyMinimumTarget ?? 0)
+      };
     }
     if (snapshot.gatewaySettings) {
       this.gatewaySettings = {
@@ -1087,9 +1101,29 @@ export class InMemoryStore {
   }
 
   updateAdminControls(patch: Partial<AdminControlsRecord>): AdminControlsRecord {
+    const nextTrendTopicLimit =
+      patch.trendTopicLimit !== undefined
+        ? Math.max(1, Math.min(10, patch.trendTopicLimit))
+        : this.adminControls.trendTopicLimit;
+    const nextAutoMintIntervalMinutes =
+      patch.autoMintIntervalMinutes !== undefined
+        ? Math.max(1, patch.autoMintIntervalMinutes)
+        : this.adminControls.autoMintIntervalMinutes;
+    const nextAutoMintBatchSize =
+      patch.autoMintBatchSize !== undefined
+        ? Math.max(1, Math.min(10, patch.autoMintBatchSize))
+        : this.adminControls.autoMintBatchSize;
+    const nextDailyMinimumTarget =
+      patch.dailyMinimumTarget !== undefined
+        ? Math.max(0, patch.dailyMinimumTarget)
+        : this.adminControls.dailyMinimumTarget;
     this.adminControls = {
       ...this.adminControls,
-      ...patch
+      ...patch,
+      trendTopicLimit: nextTrendTopicLimit,
+      autoMintIntervalMinutes: nextAutoMintIntervalMinutes,
+      autoMintBatchSize: nextAutoMintBatchSize,
+      dailyMinimumTarget: nextDailyMinimumTarget
     };
     this.touch();
     return this.adminControls;
@@ -1344,8 +1378,16 @@ async function ensurePgPool(): Promise<Pool> {
       daily_cap INTEGER NOT NULL,
       hourly_cap INTEGER NOT NULL,
       pipeline_enabled BOOLEAN NOT NULL,
-      schedule_enabled BOOLEAN NOT NULL
+      schedule_enabled BOOLEAN NOT NULL,
+      trend_topic_limit INTEGER NOT NULL DEFAULT 3,
+      auto_mint_interval_minutes INTEGER NOT NULL DEFAULT 15,
+      auto_mint_batch_size INTEGER NOT NULL DEFAULT 1,
+      daily_minimum_target INTEGER NOT NULL DEFAULT 0
     );
+    ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS trend_topic_limit INTEGER NOT NULL DEFAULT 3;
+    ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS auto_mint_interval_minutes INTEGER NOT NULL DEFAULT 15;
+    ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS auto_mint_batch_size INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS daily_minimum_target INTEGER NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS app_settings (
       id INTEGER PRIMARY KEY,
       default_edition_size INTEGER NOT NULL,
@@ -1677,7 +1719,11 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
           dailyCap: Number(adminControlRows.rows[0].daily_cap),
           hourlyCap: Number(adminControlRows.rows[0].hourly_cap),
           pipelineEnabled: Boolean(adminControlRows.rows[0].pipeline_enabled),
-          scheduleEnabled: Boolean(adminControlRows.rows[0].schedule_enabled)
+          scheduleEnabled: Boolean(adminControlRows.rows[0].schedule_enabled),
+          trendTopicLimit: Math.max(1, Math.min(10, Number(adminControlRows.rows[0].trend_topic_limit ?? 3))),
+          autoMintIntervalMinutes: Math.max(1, Number(adminControlRows.rows[0].auto_mint_interval_minutes ?? 15)),
+          autoMintBatchSize: Math.max(1, Math.min(10, Number(adminControlRows.rows[0].auto_mint_batch_size ?? 1))),
+          dailyMinimumTarget: Math.max(0, Number(adminControlRows.rows[0].daily_minimum_target ?? 0))
         }
       : undefined,
     gatewaySettings: appSettingsRows.rows[0]
@@ -1964,13 +2010,28 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
 
     await client.query("DELETE FROM admin_controls WHERE id = 1");
     await client.query(
-      `INSERT INTO admin_controls (id, daily_cap, hourly_cap, pipeline_enabled, schedule_enabled)
-       VALUES (1, $1, $2, $3, $4)`,
+      `INSERT INTO admin_controls
+       (
+        id,
+        daily_cap,
+        hourly_cap,
+        pipeline_enabled,
+        schedule_enabled,
+        trend_topic_limit,
+        auto_mint_interval_minutes,
+       auto_mint_batch_size,
+       daily_minimum_target
+       )
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         snapshot.adminControls.dailyCap,
         snapshot.adminControls.hourlyCap,
         snapshot.adminControls.pipelineEnabled,
-        snapshot.adminControls.scheduleEnabled
+        snapshot.adminControls.scheduleEnabled,
+        snapshot.adminControls.trendTopicLimit,
+        snapshot.adminControls.autoMintIntervalMinutes,
+        snapshot.adminControls.autoMintBatchSize,
+        snapshot.adminControls.dailyMinimumTarget
       ]
     );
 

@@ -661,7 +661,8 @@ export function createAdminRoutes(services: Services): Router {
     const schema = z.object({
       recipient: z.string().optional(),
       seriesId: z.number().int().positive().optional(),
-      limit: z.number().int().positive().max(5).optional()
+      limit: z.number().int().positive().max(10).optional(),
+      themeOverride: z.string().min(2).max(80).optional()
     });
     const parsed = schema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -912,11 +913,21 @@ export function createAdminRoutes(services: Services): Router {
       dailyCap: z.number().int().positive().optional(),
       hourlyCap: z.number().int().positive().optional(),
       pipelineEnabled: z.boolean().optional(),
-      scheduleEnabled: z.boolean().optional()
+      scheduleEnabled: z.boolean().optional(),
+      trendTopicLimit: z.number().int().min(1).max(10).optional(),
+      autoMintIntervalMinutes: z.number().int().positive().optional(),
+      autoMintBatchSize: z.number().int().min(1).max(10).optional(),
+      dailyMinimumTarget: z.number().int().min(0).optional()
     });
     const parsed = schema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues });
+    }
+    const nextDailyCap = parsed.data.dailyCap ?? services.db.adminControls.dailyCap;
+    const nextDailyMinimumTarget =
+      parsed.data.dailyMinimumTarget ?? services.db.adminControls.dailyMinimumTarget ?? 0;
+    if (nextDailyMinimumTarget > nextDailyCap) {
+      return res.status(400).json({ error: "Daily minimum target cannot exceed daily cap" });
     }
     services.db.updateAdminControls(parsed.data);
     appendAuditLog("mint_controls_updated", parsed.data, res.locals.adminActorEmail);

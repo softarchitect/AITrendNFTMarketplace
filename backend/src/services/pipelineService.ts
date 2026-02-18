@@ -30,7 +30,12 @@ export class PipelineService {
     return undefined;
   }
 
-  async runAutomatedMintCycle(input?: { recipient?: string; seriesId?: number; limit?: number }) {
+  async runAutomatedMintCycle(input?: {
+    recipient?: string;
+    seriesId?: number;
+    limit?: number;
+    themeOverride?: string;
+  }) {
     const seriesId = input?.seriesId ?? config.defaultSeriesId;
     // Preflight chain constraints first so we fail fast before AI/IPFS work.
     await this.minter.ensureSeriesMintable(seriesId);
@@ -40,7 +45,16 @@ export class PipelineService {
       throw new Error(canMint.reason ?? "Mint cap reached");
     }
 
-    const [topic] = this.trends.ingestSimulatedTrends(input?.limit ?? 1);
+    const resolvedThemeOverride = input?.themeOverride?.trim().replace(/\s+/g, " ");
+    const resolvedLimit = Math.max(1, Math.min(10, input?.limit ?? this.db.adminControls.trendTopicLimit ?? 3));
+    const topic = resolvedThemeOverride
+      ? this.db.createTrend({
+          source: "manual",
+          topic: resolvedThemeOverride,
+          score: 100,
+          pinned: true
+        })
+      : this.trends.ingestSimulatedTrends(resolvedLimit)[0];
     if (!topic) {
       throw new Error("No trend topic available");
     }

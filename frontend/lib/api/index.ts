@@ -154,6 +154,10 @@ interface AdminControlsDto {
   hourlyCap: number
   pipelineEnabled: boolean
   scheduleEnabled: boolean
+  trendTopicLimit: number
+  autoMintIntervalMinutes: number
+  autoMintBatchSize: number
+  dailyMinimumTarget: number
 }
 
 interface AdminSeriesDto {
@@ -1020,6 +1024,7 @@ export async function runMintCycle(payload?: {
   recipient?: string
   seriesId?: number
   limit?: number
+  themeOverride?: string
 }): Promise<RunMintCycleResult> {
   return apiRequest<RunMintCycleResult>("/api/admin/run-cycle", {
     method: "POST",
@@ -1027,6 +1032,7 @@ export async function runMintCycle(payload?: {
       recipient: payload?.recipient,
       seriesId: payload?.seriesId,
       limit: payload?.limit,
+      themeOverride: payload?.themeOverride,
     },
   })
 }

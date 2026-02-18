@@ -16,6 +16,7 @@ Milestone‑2 delivers the backend automation and API surface for the Phase‑1 
 
 - **Milestone overview**: `docs/milestones/M2-ai-pipeline-backend-apis.md`
 - **Backend code**: `backend/`
+- **Operations/testing guide**: `backend/BACKEND_OPERATIONS_GUIDE.md`
 
 ### Deployed contract (Sepolia)
 

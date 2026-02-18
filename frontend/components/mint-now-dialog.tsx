@@ -21,13 +21,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
-import { getAdminMintSeries, runMintCycle, type RunMintCycleResult } from "@/lib/api"
+import { getAdminMintSeries, getMintControls, getThemes, runMintCycle, type RunMintCycleResult } from "@/lib/api"
 import { toast } from "sonner"
 
 export interface MintCycleRequestPayload {
   recipient?: string
   seriesId?: number
   limit: number
+  themeOverride?: string
 }
 
 interface MintNowDialogProps {
@@ -36,13 +37,17 @@ interface MintNowDialogProps {
 }
 
 export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogProps) {
+  const MAX_TOPIC_LIMIT = 10
   const [open, setOpen] = useState(false)
   const [mintingNow, setMintingNow] = useState(false)
   const [recipient, setRecipient] = useState("")
   const [seriesId, setSeriesId] = useState("")
+  const [themeOverride, setThemeOverride] = useState("")
   const [limit, setLimit] = useState("1")
   const [seriesLoading, setSeriesLoading] = useState(false)
+  const [themeLoading, setThemeLoading] = useState(false)
   const [seriesOptions, setSeriesOptions] = useState<Array<{ seriesId: number; remaining: number; maxSupply: number }>>([])
+  const [themeOptions, setThemeOptions] = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -50,21 +55,53 @@ export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogP
     const loadSeries = async () => {
       try {
         setSeriesLoading(true)
-        const response = await getAdminMintSeries()
+        setThemeLoading(true)
+        const [seriesResult, controlsResult, themesResult] = await Promise.allSettled([
+          getAdminMintSeries(),
+          getMintControls(),
+          getThemes()
+        ])
         if (!active) return
-        setSeriesOptions(response.series)
-        if (response.series.length > 0) {
-          const preferred = response.series.find((item) => item.seriesId === response.defaultSeriesId) ?? response.series[0]
-          setSeriesId((current) => current || String(preferred.seriesId))
+
+        if (controlsResult.status === "fulfilled") {
+          const defaultLimit = Math.max(1, Math.min(MAX_TOPIC_LIMIT, controlsResult.value.trendTopicLimit ?? 3))
+          setLimit(String(defaultLimit))
+        }
+
+        if (seriesResult.status === "fulfilled") {
+          const response = seriesResult.value
+          setSeriesOptions(response.series)
+          if (response.series.length > 0) {
+            const preferred = response.series.find((item) => item.seriesId === response.defaultSeriesId) ?? response.series[0]
+            setSeriesId((current) => current || String(preferred.seriesId))
+          }
+        } else {
+          setSeriesOptions([])
+          toast.error("Could not load on-chain series list. You can still enter a series ID manually.")
+        }
+
+        if (themesResult.status === "fulfilled") {
+          const selectableThemes = themesResult.value
+            .filter((theme) => theme.active)
+            .map((theme) => theme.name.trim())
+            .filter((name) => name.length > 0)
+          const dedupedThemes = Array.from(new Set(selectableThemes))
+          setThemeOptions(dedupedThemes)
+          // Default to the first active theme so it's available immediately on first open.
+          setThemeOverride((current) => current || dedupedThemes[0] || "")
+        } else {
+          setThemeOptions([])
         }
       } catch {
         if (active) {
           setSeriesOptions([])
-          toast.error("Could not load on-chain series list. You can still enter a series ID manually.")
+          setThemeOptions([])
+          toast.error("Failed to load mint setup options")
         }
       } finally {
         if (active) {
           setSeriesLoading(false)
+          setThemeLoading(false)
         }
       }
     }
@@ -76,8 +113,8 @@ export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogP
 
   async function handleMintNow() {
     const parsedLimit = Number(limit)
-    if (!Number.isFinite(parsedLimit) || parsedLimit < 1 || parsedLimit > 5) {
-      toast.error("Limit must be between 1 and 5")
+    if (!Number.isFinite(parsedLimit) || parsedLimit < 1 || parsedLimit > MAX_TOPIC_LIMIT) {
+      toast.error(`Topic limit must be between 1 and ${MAX_TOPIC_LIMIT}`)
       return
     }
 
@@ -90,7 +127,8 @@ export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogP
     const payload: MintCycleRequestPayload = {
       recipient: recipient.trim() || undefined,
       seriesId: parsedSeriesId,
-      limit: parsedLimit
+      limit: parsedLimit,
+      themeOverride: themeOverride.trim() || undefined
     }
 
     try {
@@ -98,7 +136,8 @@ export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogP
       setOpen(false)
       setRecipient("")
       setSeriesId("")
-      setLimit("1")
+      setThemeOverride("")
+      setLimit("3")
       if (onMintRequested) {
         await onMintRequested(payload)
       }
@@ -143,10 +182,12 @@ export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogP
           </div>
           <div className="space-y-2">
             <Label htmlFor="mint-series-id">Series ID (optional)</Label>
-            {seriesOptions.length > 0 ? (
-              <Select value={seriesId} onValueChange={setSeriesId} disabled={seriesLoading}>
+            {seriesLoading ? (
+              <Input id="mint-series-id" value="Loading series..." disabled />
+            ) : seriesOptions.length > 0 ? (
+              <Select value={seriesId} onValueChange={setSeriesId} disabled={mintingNow}>
                 <SelectTrigger id="mint-series-id">
-                  <SelectValue placeholder={seriesLoading ? "Loading series..." : "Select series"} />
+                  <SelectValue placeholder="Select series" />
                 </SelectTrigger>
                 <SelectContent>
                   {seriesOptions.map((item) => (
@@ -164,26 +205,62 @@ export function MintNowDialog({ onMintRequested, onMintStarted }: MintNowDialogP
                 placeholder="1"
                 value={seriesId}
                 onChange={(event) => setSeriesId(event.target.value)}
+                disabled={mintingNow}
               />
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mint-limit">Limit</Label>
+            <Label htmlFor="mint-theme">Theme override (optional)</Label>
+            {themeLoading ? (
+              <Input id="mint-theme" value="Loading themes..." disabled />
+            ) : themeOptions.length > 0 ? (
+              <Select
+                value={themeOverride || "__auto__"}
+                onValueChange={(value) => setThemeOverride(value === "__auto__" ? "" : value)}
+                disabled={mintingNow}
+              >
+                <SelectTrigger id="mint-theme">
+                  <SelectValue placeholder="Auto-select from trend pipeline" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto__">Auto-select</SelectItem>
+                  {themeOptions.map((themeName) => (
+                    <SelectItem key={themeName} value={themeName}>
+                      {themeName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="mint-theme"
+                placeholder="Type a theme name (e.g. AI Art)"
+                value={themeOverride}
+                onChange={(event) => setThemeOverride(event.target.value)}
+                disabled={mintingNow}
+              />
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mint-limit">Topic limit (1-10)</Label>
             <Input
               id="mint-limit"
               type="number"
               min={1}
-              max={5}
+              max={MAX_TOPIC_LIMIT}
               value={limit}
               onChange={(event) => setLimit(event.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Defaults to the value configured in Admin Settings.
+            </p>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={mintingNow}>
             Cancel
           </Button>
-          <Button onClick={() => void handleMintNow()} disabled={mintingNow}>
+          <Button onClick={() => void handleMintNow()} disabled={mintingNow || seriesLoading || themeLoading}>
             {mintingNow && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Start Mint
           </Button>

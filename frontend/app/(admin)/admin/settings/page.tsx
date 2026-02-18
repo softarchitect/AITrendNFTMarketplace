@@ -25,6 +25,10 @@ export default function AdminSettingsPage() {
   const [webhookVerification, setWebhookVerification] = useState(false)
   const [dailyCap, setDailyCap] = useState("50")
   const [hourlyCap, setHourlyCap] = useState("10")
+  const [trendTopicLimit, setTrendTopicLimit] = useState("3")
+  const [autoMintIntervalMinutes, setAutoMintIntervalMinutes] = useState("15")
+  const [autoMintBatchSize, setAutoMintBatchSize] = useState("1")
+  const [dailyMinimumTarget, setDailyMinimumTarget] = useState("0")
   const [pipelineEnabled, setPipelineEnabled] = useState(true)
   const [scheduleEnabled, setScheduleEnabled] = useState(true)
   const [webhookLogs, setWebhookLogs] = useState<Array<{ id: string; status: string; createdAt: string; externalRef?: string; reason?: string }>>([])
@@ -74,6 +78,10 @@ export default function AdminSettingsPage() {
       .then(([controls]) => {
         setDailyCap(String(controls.dailyCap))
         setHourlyCap(String(controls.hourlyCap))
+        setTrendTopicLimit(String(controls.trendTopicLimit ?? 3))
+        setAutoMintIntervalMinutes(String(controls.autoMintIntervalMinutes ?? 15))
+        setAutoMintBatchSize(String(controls.autoMintBatchSize ?? 1))
+        setDailyMinimumTarget(String(controls.dailyMinimumTarget ?? 0))
         setPipelineEnabled(controls.pipelineEnabled)
         setScheduleEnabled(controls.scheduleEnabled)
       })
@@ -86,6 +94,10 @@ export default function AdminSettingsPage() {
   async function handleSave() {
     const parsedDailyCap = Number(dailyCap)
     const parsedHourlyCap = Number(hourlyCap)
+    const parsedTrendTopicLimit = Number(trendTopicLimit)
+    const parsedAutoMintIntervalMinutes = Number(autoMintIntervalMinutes)
+    const parsedAutoMintBatchSize = Number(autoMintBatchSize)
+    const parsedDailyMinimumTarget = Number(dailyMinimumTarget)
     if (!Number.isFinite(parsedDailyCap) || parsedDailyCap < 1) {
       toast.error("Daily cap must be a positive number.")
       return
@@ -96,6 +108,26 @@ export default function AdminSettingsPage() {
     }
     if (parsedHourlyCap > parsedDailyCap) {
       toast.error("Hourly cap cannot exceed daily cap.")
+      return
+    }
+    if (!Number.isFinite(parsedTrendTopicLimit) || parsedTrendTopicLimit < 1 || parsedTrendTopicLimit > 10) {
+      toast.error("Trend topic limit must be between 1 and 10.")
+      return
+    }
+    if (!Number.isFinite(parsedAutoMintIntervalMinutes) || parsedAutoMintIntervalMinutes < 1) {
+      toast.error("Auto-mint interval must be at least 1 minute.")
+      return
+    }
+    if (!Number.isFinite(parsedAutoMintBatchSize) || parsedAutoMintBatchSize < 1 || parsedAutoMintBatchSize > 10) {
+      toast.error("Auto-mint quantity per cycle must be between 1 and 10.")
+      return
+    }
+    if (!Number.isFinite(parsedDailyMinimumTarget) || parsedDailyMinimumTarget < 0) {
+      toast.error("Daily minimum target must be zero or higher.")
+      return
+    }
+    if (parsedDailyMinimumTarget > parsedDailyCap) {
+      toast.error("Daily minimum target cannot exceed daily cap.")
       return
     }
     const normalizedWebhookHeader = webhookHeader.trim().toLowerCase()
@@ -109,6 +141,10 @@ export default function AdminSettingsPage() {
         updateMintControls({
           dailyCap: parsedDailyCap,
           hourlyCap: parsedHourlyCap,
+          trendTopicLimit: parsedTrendTopicLimit,
+          autoMintIntervalMinutes: parsedAutoMintIntervalMinutes,
+          autoMintBatchSize: parsedAutoMintBatchSize,
+          dailyMinimumTarget: parsedDailyMinimumTarget,
           pipelineEnabled,
           scheduleEnabled
         }),
@@ -287,6 +323,38 @@ export default function AdminSettingsPage() {
               <div className="space-y-2">
                 <Label className="text-foreground">Hourly cap</Label>
                 <Input type="number" value={hourlyCap} onChange={(e) => setHourlyCap(e.target.value)} min={1} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Topic limit per cycle (1-10)</Label>
+                <Input type="number" value={trendTopicLimit} onChange={(e) => setTrendTopicLimit(e.target.value)} min={1} max={10} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Auto-mint interval (minutes)</Label>
+                <Input
+                  type="number"
+                  value={autoMintIntervalMinutes}
+                  onChange={(e) => setAutoMintIntervalMinutes(e.target.value)}
+                  min={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Auto-mint quantity per cycle (1-10)</Label>
+                <Input
+                  type="number"
+                  value={autoMintBatchSize}
+                  onChange={(e) => setAutoMintBatchSize(e.target.value)}
+                  min={1}
+                  max={10}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Daily minimum target (0 = disabled)</Label>
+                <Input
+                  type="number"
+                  value={dailyMinimumTarget}
+                  onChange={(e) => setDailyMinimumTarget(e.target.value)}
+                  min={0}
+                />
               </div>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">

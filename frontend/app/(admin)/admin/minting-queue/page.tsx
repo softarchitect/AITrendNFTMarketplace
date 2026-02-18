@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { MintNowDialog } from "@/components/mint-now-dialog"
 import { StatusPill } from "@/components/status-pill"
 import { PageTransition } from "@/components/page-transition"
-import { getMintControls, getMintQueue, retryMint, type RunMintCycleResult, updateMintControls } from "@/lib/api"
+import { getAdminOverview, getMintControls, getMintQueue, retryMint, type RunMintCycleResult, updateMintControls } from "@/lib/api"
 import type { NFT } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -19,6 +19,11 @@ export default function MintingQueuePage() {
   const [optimisticQueue, setOptimisticQueue] = useState<NFT[]>([])
   const [loading, setLoading] = useState(true)
   const [pipelineActive, setPipelineActive] = useState(true)
+  const [topicLimit, setTopicLimit] = useState<number>(3)
+  const [autoMintIntervalMinutes, setAutoMintIntervalMinutes] = useState<number>(15)
+  const [autoMintBatchSize, setAutoMintBatchSize] = useState<number>(1)
+  const [dailyMinimumTarget, setDailyMinimumTarget] = useState<number>(0)
+  const [mintedToday, setMintedToday] = useState<number>(0)
   const [selected, setSelected] = useState<NFT | null>(null)
   const [retrying, setRetrying] = useState<string | null>(null)
 
@@ -28,10 +33,15 @@ export default function MintingQueuePage() {
   }
 
   useEffect(() => {
-    Promise.all([getMintQueue(), getMintControls()])
-      .then(([data, controls]) => {
+    Promise.all([getMintQueue(), getMintControls(), getAdminOverview()])
+      .then(([data, controls, overview]) => {
         setQueue(data)
         setPipelineActive(controls.pipelineEnabled)
+        setTopicLimit(controls.trendTopicLimit ?? 3)
+        setAutoMintIntervalMinutes(controls.autoMintIntervalMinutes ?? 15)
+        setAutoMintBatchSize(controls.autoMintBatchSize ?? 1)
+        setDailyMinimumTarget(controls.dailyMinimumTarget ?? 0)
+        setMintedToday(overview.mintedToday ?? 0)
         setLoading(false)
       })
   }, [])
@@ -87,6 +97,7 @@ export default function MintingQueuePage() {
     recipient?: string
     seriesId?: number
     limit: number
+    themeOverride?: string
   }): NFT {
     const nowIso = new Date().toISOString()
     const seriesLabel = request.seriesId ? `Series #${request.seriesId}` : "Default Series"
@@ -98,7 +109,7 @@ export default function MintingQueuePage() {
       title: "TrendMint (Processing)",
       description: "Mint pipeline started by admin.",
       imageUrl: "/placeholder.svg?height=512&width=512&query=trendmint%20processing",
-      promptSummary: `Mint request queued (${seriesLabel}, limit ${request.limit})`,
+      promptSummary: `Mint request queued (${seriesLabel}, limit ${request.limit}${request.themeOverride ? `, theme ${request.themeOverride}` : ""})`,
       trendSources: ["Admin"],
       themes: ["AI Art"],
       mintedAt: nowIso,
@@ -124,6 +135,7 @@ export default function MintingQueuePage() {
     recipient?: string
     seriesId?: number
     limit: number
+    themeOverride?: string
   }) {
     const optimisticItem = buildOptimisticQueueItemFromRequest(request)
     setOptimisticQueue((current) => [optimisticItem, ...current])
@@ -149,6 +161,30 @@ export default function MintingQueuePage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Minting Queue</h1>
           <p className="text-muted-foreground">Monitor and manage the minting pipeline</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+              <span className="text-muted-foreground">Current topic limit</span>
+              <span className="font-medium text-foreground">{topicLimit}</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+              <span className="text-muted-foreground">Auto-mint interval</span>
+              <span className="font-medium text-foreground">{autoMintIntervalMinutes} min</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+              <span className="text-muted-foreground">Auto-mint quantity</span>
+              <span className="font-medium text-foreground">{autoMintBatchSize}/cycle</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+              <span className="text-muted-foreground">Daily minimum target</span>
+              <span className="font-medium text-foreground">{dailyMinimumTarget > 0 ? dailyMinimumTarget : "off"}</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+              <span className="text-muted-foreground">Today progress</span>
+              <span className="font-medium text-foreground">
+                {dailyMinimumTarget > 0 ? `${mintedToday}/${dailyMinimumTarget}` : `${mintedToday}/off`}
+              </span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <MintNowDialog onMintRequested={handleMintRequested} onMintStarted={handleMintStarted} />
