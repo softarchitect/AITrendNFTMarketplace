@@ -70,4 +70,23 @@ npx hardhat verify --network sepolia <contractAddress> "TrendMint721" "TREND" <d
 - `backend/`: Express + TypeScript backend services (Milestone‑2)
 - `docs/`: Milestone and deployment documentation
 
+## Frontend Environment (Milestone-3)
+
+Create `frontend/.env.local` from `frontend/.env.example` and set:
+
+- `NEXT_PUBLIC_API_BASE_URL` (example: `http://localhost:4000`)
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (WalletConnect project id)
+- `NEXT_PUBLIC_CHAIN_ID` (example: `11155111` for Sepolia)
+- `NEXT_PUBLIC_CONTRACT_ADDRESS` (deployed ERC-721 contract address)
+
+## Frontend Commands
+
+```bash
+cd frontend
+npm install
+npm run lint
+npm run test
+npm run build
+```
+
 

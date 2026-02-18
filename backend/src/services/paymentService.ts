@@ -5,6 +5,7 @@ import {
   CreateSessionInput,
   GenericHttpPaymentAdapter,
   MockPaymentAdapter,
+  NowPaymentsAdapter,
   PaymentAdapter,
   VellisPaymentAdapter,
   WertPaymentAdapter,
@@ -13,53 +14,64 @@ import {
 } from "./payment/adapters";
 
 export class PaymentService {
-  private readonly adapter: PaymentAdapter;
+  private readonly staticAdapter?: PaymentAdapter;
 
   constructor(
     private readonly db: InMemoryStore,
     adapter?: PaymentAdapter
   ) {
     if (adapter) {
-      this.adapter = adapter;
+      this.staticAdapter = adapter;
       return;
     }
+  }
 
-    if (config.features.mockPayment || config.payment.provider === "mock") {
-      this.adapter = new MockPaymentAdapter();
-      return;
+  private resolveAdapter(): PaymentAdapter {
+    if (this.staticAdapter) {
+      return this.staticAdapter;
+    }
+
+    const { provider, mode } = this.db.gatewaySettings;
+    if (mode === "sandbox" || provider === "mock") {
+      return new MockPaymentAdapter();
     }
 
     if (!config.payment.apiBaseUrl || !config.payment.apiKey) {
       throw new Error("Payment provider is enabled but PAYMENT_API_BASE_URL / PAYMENT_API_KEY are missing.");
     }
-    if (config.payment.provider === "vellis") {
-      this.adapter = new VellisPaymentAdapter(
-        config.payment.apiBaseUrl,
-        config.payment.apiKey,
-        config.payment.createSessionPath
-      );
-      return;
+    if (provider === "vellis") {
+      return new VellisPaymentAdapter(config.payment.apiBaseUrl, config.payment.apiKey, config.payment.createSessionPath);
     }
-    if (config.payment.provider === "wert") {
-      this.adapter = new WertPaymentAdapter(
-        config.payment.apiBaseUrl,
-        config.payment.apiKey,
-        config.payment.createSessionPath
-      );
-      return;
+    if (provider === "wert") {
+      return new WertPaymentAdapter(config.payment.apiBaseUrl, config.payment.apiKey, config.payment.createSessionPath);
     }
-
-    this.adapter = new GenericHttpPaymentAdapter(config.payment.apiBaseUrl, config.payment.apiKey, config.payment.createSessionPath);
+    if (provider === "nowpayments") {
+      return new NowPaymentsAdapter(config.payment.apiBaseUrl, config.payment.apiKey, config.payment.createSessionPath);
+    }
+    if (provider === "generic") {
+      return new GenericHttpPaymentAdapter(config.payment.apiBaseUrl, config.payment.apiKey, config.payment.createSessionPath);
+    }
+    return new MockPaymentAdapter();
   }
 
-  async createPaymentSession(input: CreateSessionInput): Promise<PaymentRecord> {
-    const session = await this.adapter.createSession(input);
-    return this.db.createPayment({
+  getGatewayConfig(): { provider: string; mode: "sandbox" | "live" } {
+    const settings = this.db.gatewaySettings;
+    return {
+      provider: settings.provider,
+      mode: settings.mode
+    };
+  }
+
+  async createPaymentSession(input: CreateSessionInput): Promise<{ payment: PaymentRecord; checkoutUrl?: string }> {
+    const adapter = this.resolveAdapter();
+    const session = await adapter.createSession(input);
+    const payment = this.db.createPayment({
       externalRef: session.externalRef,
       amountUsd: input.amountUsd,
       currency: input.currency,
       status: session.status
     });
+    return { payment, checkoutUrl: session.checkoutUrl };
   }
 
   updateByExternalRef(externalRef: string, status: PaymentStatus): PaymentRecord {
@@ -71,6 +83,9 @@ export class PaymentService {
   }
 
   isValidWebhookSignature(payload: unknown, signature: string | undefined): boolean {
+    if (!this.db.gatewaySettings.webhookVerificationEnabled) {
+      return true;
+    }
     return verifyWebhookSignature(payload, signature);
   }
 
@@ -79,6 +94,16 @@ export class PaymentService {
   }
 
   parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus } {
-    return this.adapter.parseWebhook(payload);
+    return this.resolveAdapter().parseWebhook(payload);
+  }
+
+  async healthCheck(): Promise<{ provider: string; ok: boolean; detail: string }> {
+    const adapter = this.resolveAdapter();
+    const result = await adapter.probeConnection();
+    return {
+      provider: adapter.providerName,
+      ok: result.ok,
+      detail: result.detail
+    };
   }
 }

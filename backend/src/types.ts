@@ -65,8 +65,14 @@ export interface MintRecord {
 export interface ListingRecord {
   id: string;
   tokenId: number;
+  seriesId: number;
+  editionSize: number;
+  editionNumber: number;
+  editionAvailable: number;
   owner: string;
   tokenUri: string;
+  imageUrl?: string;
+  themes: string[];
   status: "minted" | "listed" | "sold" | "transferred";
   createdAt: string;
   updatedAt: string;

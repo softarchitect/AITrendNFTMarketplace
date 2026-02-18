@@ -1,5 +1,5 @@
 import { config } from "../config";
-import { InMemoryStore } from "../store/inMemoryStore";
+import { AdminThemeRecord, AdminThemeType, InMemoryStore } from "../store/inMemoryStore";
 import { TrendTopic } from "../types";
 
 const DEFAULT_SIMULATED_TOPICS = [
@@ -14,23 +14,62 @@ export class TrendIngestionService {
   constructor(private readonly db: InMemoryStore) {}
 
   setSources(sources: string[]): string[] {
-    this.db.trendSources.clear();
-    sources.forEach((source) => this.db.trendSources.add(source.toLowerCase()));
-    return [...this.db.trendSources];
+    return this.db.replaceTrendSources(sources);
   }
 
   getSources(): string[] {
     return [...this.db.trendSources];
   }
 
+  getSourceStatuses(): Array<{ source: string; status: "Active" | "Paused" }> {
+    return this.db.getTrendSourceStatuses();
+  }
+
+  getSourceSettings(): Array<{
+    source: string;
+    status: "Active" | "Paused";
+    rateLimitMode: "Standard" | "Aggressive" | "Conservative";
+  }> {
+    return this.db.getTrendSourceSettings();
+  }
+
   setPinnedThemes(themes: string[]): string[] {
-    this.db.pinnedThemes.clear();
-    themes.forEach((theme) => this.db.pinnedThemes.add(theme.trim()));
-    return [...this.db.pinnedThemes];
+    return this.db.replacePinnedThemes(themes);
   }
 
   getPinnedThemes(): string[] {
     return [...this.db.pinnedThemes];
+  }
+
+  getThemes(): AdminThemeRecord[] {
+    return this.db.listThemes();
+  }
+
+  createTheme(input: {
+    name: string;
+    type: AdminThemeType;
+    description?: string;
+    active?: boolean;
+    priority?: number;
+  }): AdminThemeRecord {
+    return this.db.createTheme(input);
+  }
+
+  updateTheme(
+    id: string,
+    patch: Partial<{
+      name: string;
+      type: AdminThemeType;
+      description: string;
+      active: boolean;
+      priority: number;
+    }>
+  ): AdminThemeRecord {
+    return this.db.updateTheme(id, patch);
+  }
+
+  deleteTheme(id: string): boolean {
+    return this.db.deleteTheme(id);
   }
 
   canMintNow(): { ok: boolean; reason?: string } {
@@ -40,15 +79,23 @@ export class TrendIngestionService {
 
     if (this.db.mintCounters.date !== date) {
       this.db.mintCounters = { date, perDay: 0, perHour: {} };
+      this.db.touch();
     }
 
     const hourCount = this.db.mintCounters.perHour[hour] ?? 0;
 
-    if (this.db.mintCounters.perDay >= config.mintCapPerDay) {
+    const dailyCap = this.db.adminControls.dailyCap || config.mintCapPerDay;
+    const hourlyCap = this.db.adminControls.hourlyCap || config.mintCapPerHour;
+
+    if (!this.db.adminControls.scheduleEnabled) {
+      return { ok: false, reason: "Mint schedule is disabled" };
+    }
+
+    if (this.db.mintCounters.perDay >= dailyCap) {
       return { ok: false, reason: "Daily mint cap reached" };
     }
 
-    if (hourCount >= config.mintCapPerHour) {
+    if (hourCount >= hourlyCap) {
       return { ok: false, reason: "Hourly mint cap reached" };
     }
 
@@ -66,6 +113,7 @@ export class TrendIngestionService {
 
     this.db.mintCounters.perDay += 1;
     this.db.mintCounters.perHour[hour] = (this.db.mintCounters.perHour[hour] ?? 0) + 1;
+    this.db.touch();
   }
 
   ingestSimulatedTrends(limit = 3): TrendTopic[] {

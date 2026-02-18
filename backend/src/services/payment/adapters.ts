@@ -10,19 +10,29 @@ export interface CreateSessionInput {
 
 export interface PaymentAdapter {
   providerName: string;
-  createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus }>;
+  createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus; checkoutUrl?: string }>;
   parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus };
+  probeConnection(): Promise<{ ok: boolean; detail: string }>;
 }
 
 export class MockPaymentAdapter implements PaymentAdapter {
   public readonly providerName = "mock";
 
-  async createSession(): Promise<{ externalRef: string; status: PaymentStatus }> {
-    return { externalRef: `mock_${randomUUID()}`, status: "pending" };
+  async createSession(): Promise<{ externalRef: string; status: PaymentStatus; checkoutUrl?: string }> {
+    const externalRef = `mock_${randomUUID()}`;
+    return {
+      externalRef,
+      status: "pending",
+      checkoutUrl: `https://sandbox-gateway.local/session/${externalRef}`
+    };
   }
 
   parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus } {
     return parseWebhookDefault(payload);
+  }
+
+  async probeConnection(): Promise<{ ok: boolean; detail: string }> {
+    return { ok: true, detail: "Mock adapter active" };
   }
 }
 
@@ -38,7 +48,7 @@ export class GenericHttpPaymentAdapter implements PaymentAdapter {
     this.providerName = providerName;
   }
 
-  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus }> {
+  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus; checkoutUrl?: string }> {
     const response = await fetch(`${this.baseUrl}${this.createSessionPath}`, {
       method: "POST",
       headers: {
@@ -70,11 +80,36 @@ export class GenericHttpPaymentAdapter implements PaymentAdapter {
 
     const rawStatus = String(payload.status ?? "pending");
     const status = normalizePaymentStatus(rawStatus);
-    return { externalRef, status };
+    const checkoutUrl =
+      (payload.checkoutUrl as string | undefined) ??
+      (payload.checkout_url as string | undefined) ??
+      (payload.url as string | undefined) ??
+      (payload.paymentUrl as string | undefined);
+    return { externalRef, status, checkoutUrl };
   }
 
   parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus } {
     return parseWebhookDefault(payload);
+  }
+
+  async probeConnection(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${this.apiKey}`
+        }
+      });
+      return {
+        ok: response.status < 500,
+        detail: `HTTP ${response.status}`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        detail: error instanceof Error ? error.message : "Probe failed"
+      };
+    }
   }
 }
 
@@ -87,7 +122,7 @@ export class VellisPaymentAdapter implements PaymentAdapter {
     private readonly createSessionPath: string
   ) {}
 
-  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus }> {
+  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus; checkoutUrl?: string }> {
     const response = await fetch(`${this.baseUrl}${this.createSessionPath}`, {
       method: "POST",
       headers: {
@@ -119,7 +154,12 @@ export class VellisPaymentAdapter implements PaymentAdapter {
     }
 
     const status = normalizePaymentStatus(String(payload.status ?? payload.state ?? "pending"));
-    return { externalRef, status };
+    const checkoutUrl =
+      (payload.checkoutUrl as string | undefined) ??
+      (payload.checkout_url as string | undefined) ??
+      (payload.url as string | undefined) ??
+      (payload.paymentUrl as string | undefined);
+    return { externalRef, status, checkoutUrl };
   }
 
   parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus } {
@@ -139,6 +179,26 @@ export class VellisPaymentAdapter implements PaymentAdapter {
     }
     return { externalRef, status: normalizePaymentStatus(statusRaw) };
   }
+
+  async probeConnection(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${this.apiKey}`
+        }
+      });
+      return {
+        ok: response.status < 500,
+        detail: `HTTP ${response.status}`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        detail: error instanceof Error ? error.message : "Probe failed"
+      };
+    }
+  }
 }
 
 export class WertPaymentAdapter implements PaymentAdapter {
@@ -150,7 +210,7 @@ export class WertPaymentAdapter implements PaymentAdapter {
     private readonly createSessionPath: string
   ) {}
 
-  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus }> {
+  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus; checkoutUrl?: string }> {
     const response = await fetch(`${this.baseUrl}${this.createSessionPath}`, {
       method: "POST",
       headers: {
@@ -182,7 +242,12 @@ export class WertPaymentAdapter implements PaymentAdapter {
     }
 
     const status = normalizePaymentStatus(String(payload.status ?? "pending"));
-    return { externalRef, status };
+    const checkoutUrl =
+      (payload.checkoutUrl as string | undefined) ??
+      (payload.checkout_url as string | undefined) ??
+      (payload.url as string | undefined) ??
+      (payload.paymentUrl as string | undefined);
+    return { externalRef, status, checkoutUrl };
   }
 
   parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus } {
@@ -200,6 +265,114 @@ export class WertPaymentAdapter implements PaymentAdapter {
       throw new Error("Invalid Wert webhook payload");
     }
     return { externalRef, status: normalizePaymentStatus(statusRaw) };
+  }
+
+  async probeConnection(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: "GET",
+        headers: {
+          "x-api-key": this.apiKey
+        }
+      });
+      return {
+        ok: response.status < 500,
+        detail: `HTTP ${response.status}`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        detail: error instanceof Error ? error.message : "Probe failed"
+      };
+    }
+  }
+}
+
+export class NowPaymentsAdapter implements PaymentAdapter {
+  public readonly providerName = "nowpayments";
+
+  constructor(
+    private readonly baseUrl: string,
+    private readonly apiKey: string,
+    private readonly createSessionPath: string
+  ) {}
+
+  async createSession(input: CreateSessionInput): Promise<{ externalRef: string; status: PaymentStatus; checkoutUrl?: string }> {
+    const response = await fetch(`${this.baseUrl}${this.createSessionPath}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": this.apiKey
+      },
+      body: JSON.stringify({
+        price_amount: Number(input.amountUsd.toFixed(2)),
+        price_currency: input.currency.toLowerCase(),
+        order_description: "TrendMint NFT purchase",
+        is_fixed_rate: true,
+        is_fee_paid_by_user: false
+      })
+    });
+
+    if (!response.ok) {
+      const details = await safeResponseText(response);
+      throw new Error(`NowPayments session creation failed with status ${response.status}${details ? ` - ${details}` : ""}`);
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const externalRef =
+      (payload.id as string | undefined) ??
+      (payload.order_id as string | undefined) ??
+      (payload.orderId as string | undefined);
+    const checkoutUrl =
+      (payload.invoice_url as string | undefined) ??
+      (payload.invoiceUrl as string | undefined) ??
+      (payload.payment_url as string | undefined) ??
+      (payload.paymentUrl as string | undefined) ??
+      (payload.url as string | undefined);
+
+    if (!externalRef) {
+      throw new Error("NowPayments response missing transaction reference");
+    }
+    if (!checkoutUrl) {
+      throw new Error("NowPayments response missing checkout URL");
+    }
+
+    const status = normalizePaymentStatus(String(payload.payment_status ?? payload.status ?? "pending"));
+    return { externalRef, status, checkoutUrl };
+  }
+
+  parseWebhook(payload: unknown): { externalRef: string; status: PaymentStatus } {
+    const parsed = objectFromUnknown(payload);
+    const externalRef =
+      asString(parsed.payment_id) ??
+      asString(parsed.id) ??
+      asString(parsed.order_id) ??
+      asString(parsed.externalRef);
+    const statusRaw = asString(parsed.payment_status) ?? asString(parsed.status);
+    if (!externalRef || !statusRaw) {
+      throw new Error("Invalid NowPayments webhook payload");
+    }
+    return { externalRef, status: normalizePaymentStatus(statusRaw) };
+  }
+
+  async probeConnection(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: "GET",
+        headers: {
+          "x-api-key": this.apiKey
+        }
+      });
+      return {
+        ok: response.status < 500,
+        detail: `HTTP ${response.status}`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        detail: error instanceof Error ? error.message : "Probe failed"
+      };
+    }
   }
 }
 
@@ -226,7 +399,7 @@ export function signWebhookPayload(payload: unknown, secret: string): string {
 
 export function verifyWebhookSignature(payload: unknown, signature: string | undefined): boolean {
   if (!config.payment.webhookSecret) {
-    return true;
+    return config.features.mockPayment || config.payment.provider === "mock" || config.payment.allowInsecureWebhooks;
   }
   if (!signature) {
     return false;
@@ -264,4 +437,12 @@ function objectFromUnknown(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+async function safeResponseText(response: Response): Promise<string> {
+  try {
+    return (await response.text()).slice(0, 300);
+  } catch {
+    return "";
+  }
 }

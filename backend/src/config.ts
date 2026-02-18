@@ -18,12 +18,13 @@ const envSchema = z.object({
   ENABLE_MOCK_AI: z.string().default("true"),
   ENABLE_MOCK_IPFS: z.string().default("true"),
   ENABLE_MOCK_PAYMENT: z.string().default("true"),
-  PAYMENT_PROVIDER: z.enum(["mock", "generic", "vellis", "wert"]).default("mock"),
+  PAYMENT_PROVIDER: z.enum(["mock", "generic", "vellis", "wert", "nowpayments"]).default("mock"),
   PAYMENT_API_BASE_URL: z.string().url().optional(),
   PAYMENT_API_KEY: z.string().optional(),
   PAYMENT_CREATE_SESSION_PATH: z.string().default("/sessions"),
   PAYMENT_WEBHOOK_SECRET: z.string().optional(),
   PAYMENT_WEBHOOK_SIGNATURE_HEADER: z.string().default("x-payment-signature"),
+  ALLOW_INSECURE_WEBHOOKS: z.string().default("false"),
   AI_PROVIDER: z.enum(["mock", "generic", "huggingface"]).default("mock"),
   AI_API_BASE_URL: z.string().url().optional(),
   AI_API_KEY: z.string().optional(),
@@ -37,7 +38,22 @@ const envSchema = z.object({
   IPFS_API_KEY: z.string().optional(),
   IPFS_API_SECRET: z.string().optional(),
   IPFS_API_JWT: z.string().optional(),
-  IPFS_PIN_JSON_PATH: z.string().default("/pin/json")
+  IPFS_PIN_JSON_PATH: z.string().default("/pin/json"),
+  ADMIN_EMAIL: z.string().default("admin@trendmint.local"),
+  ADMIN_PASSWORD: z.string().default("admin123"),
+  ADMIN_PASSWORD_HASH: z.string().optional(),
+  ADMIN_SESSION_TTL_MINUTES: z.coerce.number().default(720),
+  ADMIN_LOGIN_MAX_ATTEMPTS: z.coerce.number().default(5),
+  ADMIN_LOGIN_WINDOW_MINUTES: z.coerce.number().default(15),
+  ADMIN_LOGIN_BLOCK_MINUTES: z.coerce.number().default(15),
+  PERSISTENCE_DRIVER: z.enum(["file", "postgres"]).default("postgres"),
+  ENABLE_FILE_PERSISTENCE: z.string().default("true"),
+  STORE_FILE_PATH: z.string().default("./data/store.json"),
+  PG_HOST: z.string().default("localhost"),
+  PG_PORT: z.coerce.number().default(5432),
+  PG_USER: z.string().default("postgres"),
+  PG_PASSWORD: z.string().default("123456"),
+  PG_DATABASE: z.string().default("trendmint")
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -52,6 +68,13 @@ if (!parsed.success) {
 const env = parsed.data;
 
 const asBool = (value: string): boolean => value.toLowerCase() === "true";
+
+const isLivePaymentMode = !asBool(env.ENABLE_MOCK_PAYMENT) && env.PAYMENT_PROVIDER !== "mock";
+if (isLivePaymentMode && !env.PAYMENT_WEBHOOK_SECRET && !asBool(env.ALLOW_INSECURE_WEBHOOKS)) {
+  throw new Error(
+    "PAYMENT_WEBHOOK_SECRET is required in live payment mode. Set ALLOW_INSECURE_WEBHOOKS=true only for temporary non-production testing."
+  );
+}
 
 export const config = {
   port: env.PORT,
@@ -76,7 +99,8 @@ export const config = {
     apiKey: env.PAYMENT_API_KEY,
     createSessionPath: env.PAYMENT_CREATE_SESSION_PATH,
     webhookSecret: env.PAYMENT_WEBHOOK_SECRET,
-    webhookSignatureHeader: env.PAYMENT_WEBHOOK_SIGNATURE_HEADER.toLowerCase()
+    webhookSignatureHeader: env.PAYMENT_WEBHOOK_SIGNATURE_HEADER.toLowerCase(),
+    allowInsecureWebhooks: asBool(env.ALLOW_INSECURE_WEBHOOKS)
   },
   ai: {
     provider: env.AI_PROVIDER,
@@ -95,6 +119,27 @@ export const config = {
     apiSecret: env.IPFS_API_SECRET,
     apiJwt: env.IPFS_API_JWT,
     pinJsonPath: env.IPFS_PIN_JSON_PATH
+  },
+  admin: {
+    email: env.ADMIN_EMAIL.toLowerCase(),
+    password: env.ADMIN_PASSWORD,
+    passwordHash: env.ADMIN_PASSWORD_HASH,
+    sessionTtlMinutes: env.ADMIN_SESSION_TTL_MINUTES,
+    loginMaxAttempts: env.ADMIN_LOGIN_MAX_ATTEMPTS,
+    loginWindowMinutes: env.ADMIN_LOGIN_WINDOW_MINUTES,
+    loginBlockMinutes: env.ADMIN_LOGIN_BLOCK_MINUTES
+  },
+  persistence: {
+    driver: env.PERSISTENCE_DRIVER,
+    enabled: asBool(env.ENABLE_FILE_PERSISTENCE) && env.NODE_ENV !== "test",
+    storeFilePath: env.STORE_FILE_PATH,
+    postgres: {
+      host: env.PG_HOST,
+      port: env.PG_PORT,
+      user: env.PG_USER,
+      password: env.PG_PASSWORD,
+      database: env.PG_DATABASE
+    }
   }
 };
 

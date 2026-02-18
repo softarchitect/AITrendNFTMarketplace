@@ -112,6 +112,17 @@ Artifacts are written to `docs/milestones/evidence/` with timestamped filenames,
 - Payment adapters are provider-based:
   - mock mode (`PAYMENT_PROVIDER=mock`), or
   - generic HTTP provider (`PAYMENT_PROVIDER=generic|vellis|wert`) via `PAYMENT_API_BASE_URL` + `PAYMENT_API_KEY`.
-- Webhook signature verification is optional for local dev and enabled when `PAYMENT_WEBHOOK_SECRET` is set.
+- Webhook signature verification is strict in live payment mode (non-mock). If you intentionally need temporary insecure mode for testing, set `ALLOW_INSECURE_WEBHOOKS=true`.
 - Webhook parsing is provider-aware (dedicated payload extraction for `vellis` and `wert`).
+- Admin auth hardening supports:
+  - login rate limiting/temporary lockout (`ADMIN_LOGIN_*`),
+  - configurable session TTL (`ADMIN_SESSION_TTL_MINUTES`),
+  - optional PBKDF2 hashed password (`ADMIN_PASSWORD_HASH` in `pbkdf2$iterations$salt$hex` format).
+- Generate a secure admin password hash:
+  - `npm run admin:hash -- "your-strong-password"`
+- File persistence can be enabled with `ENABLE_FILE_PERSISTENCE=true` and `STORE_FILE_PATH=./data/store.json` to keep state across restarts.
+- PostgreSQL persistence is supported for local/dev and production-like persistence:
+  - `PERSISTENCE_DRIVER=postgres`
+  - `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DATABASE`
+  - backend auto-creates `trendmint_store_snapshot` and stores a single JSON snapshot row.
 - For Hugging Face responses that return `data:image/...;base64,...`, backend saves the image into `backend/generated/` and returns `asset.mediaUrl` as `/generated/<filename>`.
