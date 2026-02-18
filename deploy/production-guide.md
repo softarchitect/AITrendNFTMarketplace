@@ -10,7 +10,14 @@ Update placeholders before go-live:
 - `backend/.env.production`: `RPC_URL`, `MINTER_PRIVATE_KEY`, AI/IPFS/payment keys, admin credentials
 - `frontend/.env.production`: `NEXT_PUBLIC_CONTRACT_ADDRESS` if needed
 
-## 2) Build frontend
+On the server, keep it simple by copying production env files to `.env`:
+
+```bash
+cd /var/www/trendmint/backend && cp .env.production .env
+cd /var/www/trendmint/frontend && cp .env.production .env
+```
+
+## 2) Install deps and build frontend
 
 ```bash
 cd /var/www/trendmint/frontend
@@ -18,54 +25,48 @@ npm ci
 npm run build
 ```
 
-## 3) Start services with systemd
-
-Create `/etc/systemd/system/trendmint-backend.service`:
-
-```ini
-[Unit]
-Description=TrendMint Backend
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/var/www/trendmint/backend
-EnvironmentFile=/var/www/trendmint/backend/.env.production
-ExecStart=/usr/bin/npm run start
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Create `/etc/systemd/system/trendmint-frontend.service`:
-
-```ini
-[Unit]
-Description=TrendMint Frontend (Next.js)
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/var/www/trendmint/frontend
-EnvironmentFile=/var/www/trendmint/frontend/.env.production
-ExecStart=/usr/bin/npm run start
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable/start:
+Install backend deps too:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable trendmint-backend trendmint-frontend
-sudo systemctl restart trendmint-backend trendmint-frontend
+cd /var/www/trendmint/backend
+npm ci
+```
+
+## 3) Start apps with PM2 (simple)
+
+Install PM2 globally once:
+
+```bash
+sudo npm install -g pm2
+```
+
+Use the provided ecosystem file:
+- `deploy/ecosystem.config.cjs`
+
+Start both services:
+
+```bash
+cd /var/www/trendmint
+pm2 start deploy/ecosystem.config.cjs
+pm2 save
+pm2 status
+```
+
+Enable PM2 startup on reboot:
+
+```bash
+pm2 startup
+# run the command PM2 prints
+pm2 save
+```
+
+Useful PM2 commands:
+
+```bash
+pm2 logs trendmint-backend --lines 100
+pm2 logs trendmint-frontend --lines 100
+pm2 restart trendmint-backend trendmint-frontend
+pm2 status
 ```
 
 ## 4) Nginx setup
