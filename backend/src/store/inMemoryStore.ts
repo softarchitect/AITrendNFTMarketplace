@@ -1146,13 +1146,20 @@ async function ensurePgPool(): Promise<Pool> {
   if (pgPool) {
     return pgPool;
   }
-  pgPool = new Pool({
-    host: config.persistence.postgres.host,
-    port: config.persistence.postgres.port,
-    user: config.persistence.postgres.user,
-    password: config.persistence.postgres.password,
-    database: config.persistence.postgres.database
-  });
+  const postgresPoolConfig = config.persistence.postgres.connectionString
+    ? {
+        connectionString: config.persistence.postgres.connectionString,
+        ssl: config.persistence.postgres.ssl
+      }
+    : {
+        host: config.persistence.postgres.host,
+        port: config.persistence.postgres.port,
+        user: config.persistence.postgres.user,
+        password: config.persistence.postgres.password,
+        database: config.persistence.postgres.database,
+        ssl: config.persistence.postgres.ssl
+      };
+  pgPool = new Pool(postgresPoolConfig);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS trend_topics (
       id TEXT PRIMARY KEY,

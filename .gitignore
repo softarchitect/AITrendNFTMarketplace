@@ -25,9 +25,11 @@ yarn-error.log*
 **/coverage.json
 
 ## Secrets
-# **/.env
-# **/.env.*
-# !**/.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 docs/
 generated/
+backend/.env
+backend/.env

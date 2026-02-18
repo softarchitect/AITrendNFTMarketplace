@@ -123,6 +123,8 @@ Artifacts are written to `docs/milestones/evidence/` with timestamped filenames,
 - File persistence can be enabled with `ENABLE_FILE_PERSISTENCE=true` and `STORE_FILE_PATH=./data/store.json` to keep state across restarts.
 - PostgreSQL persistence is supported for local/dev and production-like persistence:
   - `PERSISTENCE_DRIVER=postgres`
-  - `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DATABASE`
+  - `DATABASE_URL` (recommended for managed clusters)
+  - `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DATABASE` (fallback/manual)
+  - `PG_SSL_MODE=disable|require|no-verify`
   - backend auto-creates `trendmint_store_snapshot` and stores a single JSON snapshot row.
 - For Hugging Face responses that return `data:image/...;base64,...`, backend saves the image into `backend/generated/` and returns `asset.mediaUrl` as `/generated/<filename>`.

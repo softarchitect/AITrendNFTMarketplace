@@ -49,11 +49,13 @@ const envSchema = z.object({
   PERSISTENCE_DRIVER: z.enum(["file", "postgres"]).default("postgres"),
   ENABLE_FILE_PERSISTENCE: z.string().default("true"),
   STORE_FILE_PATH: z.string().default("./data/store.json"),
+  DATABASE_URL: z.string().optional(),
   PG_HOST: z.string().default("localhost"),
   PG_PORT: z.coerce.number().default(5432),
   PG_USER: z.string().default("postgres"),
   PG_PASSWORD: z.string().default("123456"),
-  PG_DATABASE: z.string().default("trendmint")
+  PG_DATABASE: z.string().default("trendmint"),
+  PG_SSL_MODE: z.enum(["disable", "require", "no-verify"]).default("disable")
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -68,6 +70,43 @@ if (!parsed.success) {
 const env = parsed.data;
 
 const asBool = (value: string): boolean => value.toLowerCase() === "true";
+const asUrl = (value: string): URL => {
+  try {
+    return new URL(value);
+  } catch {
+    throw new Error("Invalid DATABASE_URL: expected valid postgres connection URL");
+  }
+};
+
+const databaseUrl = env.DATABASE_URL?.trim() ? env.DATABASE_URL.trim() : undefined;
+const parsedDatabaseUrl = databaseUrl ? asUrl(databaseUrl) : undefined;
+const sslModeFromUrl = parsedDatabaseUrl?.searchParams.get("sslmode")?.toLowerCase();
+const resolvedPgSslMode =
+  env.PG_SSL_MODE !== "disable"
+    ? env.PG_SSL_MODE
+    : sslModeFromUrl === "require" || sslModeFromUrl === "verify-ca" || sslModeFromUrl === "verify-full"
+      ? "require"
+      : "disable";
+
+const postgresHost = parsedDatabaseUrl?.hostname || env.PG_HOST;
+const postgresPort = parsedDatabaseUrl?.port ? Number(parsedDatabaseUrl.port) : env.PG_PORT;
+const postgresUser = parsedDatabaseUrl?.username
+  ? decodeURIComponent(parsedDatabaseUrl.username)
+  : env.PG_USER;
+const postgresPassword = parsedDatabaseUrl?.password
+  ? decodeURIComponent(parsedDatabaseUrl.password)
+  : env.PG_PASSWORD;
+const postgresDatabase =
+  parsedDatabaseUrl?.pathname && parsedDatabaseUrl.pathname !== "/"
+    ? decodeURIComponent(parsedDatabaseUrl.pathname.slice(1))
+    : env.PG_DATABASE;
+
+const postgresSsl =
+  resolvedPgSslMode === "disable"
+    ? false
+    : {
+        rejectUnauthorized: resolvedPgSslMode !== "no-verify"
+      };
 
 const isLivePaymentMode = !asBool(env.ENABLE_MOCK_PAYMENT) && env.PAYMENT_PROVIDER !== "mock";
 if (isLivePaymentMode && !env.PAYMENT_WEBHOOK_SECRET && !asBool(env.ALLOW_INSECURE_WEBHOOKS)) {
@@ -134,11 +173,13 @@ export const config = {
     enabled: asBool(env.ENABLE_FILE_PERSISTENCE) && env.NODE_ENV !== "test",
     storeFilePath: env.STORE_FILE_PATH,
     postgres: {
-      host: env.PG_HOST,
-      port: env.PG_PORT,
-      user: env.PG_USER,
-      password: env.PG_PASSWORD,
-      database: env.PG_DATABASE
+      connectionString: databaseUrl,
+      host: postgresHost,
+      port: postgresPort,
+      user: postgresUser,
+      password: postgresPassword,
+      database: postgresDatabase,
+      ssl: postgresSsl
     }
   }
 };
