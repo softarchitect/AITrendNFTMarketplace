@@ -3,18 +3,18 @@
 ## 1) Environment files
 
 Use these files from this repo:
-- `frontend/.env.production`
-- `backend/.env.production`
+- `frontend/env.production`
+- `backend/env.production`
 
 Update placeholders before go-live:
-- `backend/.env.production`: `RPC_URL`, `MINTER_PRIVATE_KEY`, AI/IPFS/payment keys, admin credentials
-- `frontend/.env.production`: `NEXT_PUBLIC_CONTRACT_ADDRESS` if needed
+- `backend/env.production`: `RPC_URL`, `MINTER_PRIVATE_KEY`, AI/IPFS/payment keys, admin credentials
+- `frontend/env.production`: `NEXT_PUBLIC_CONTRACT_ADDRESS` if needed
 
 On the server, keep it simple by copying production env files to `.env`:
 
 ```bash
-cd /var/www/trendmint/backend && cp .env.production .env
-cd /var/www/trendmint/frontend && cp .env.production .env
+cd /var/www/trendmint/backend && cp env.production .env
+cd /var/www/trendmint/frontend && cp env.production .env
 ```
 
 ## 2) Install deps and build frontend
