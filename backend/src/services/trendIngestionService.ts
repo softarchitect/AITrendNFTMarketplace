@@ -131,9 +131,10 @@ export class TrendIngestionService {
     }
 
     const sources = [...this.db.trendSources];
+    const rotationSeed = (this.db.mintCounters.perDay + this.db.trends.size) % DEFAULT_SIMULATED_TOPICS.length;
     for (let i = 0; i < limit; i += 1) {
-      const source = sources[i % sources.length] as TrendTopic["source"];
-      const topic = DEFAULT_SIMULATED_TOPICS[i % DEFAULT_SIMULATED_TOPICS.length];
+      const source = sources[(rotationSeed + i) % Math.max(1, sources.length)] as TrendTopic["source"];
+      const topic = DEFAULT_SIMULATED_TOPICS[(rotationSeed + i) % DEFAULT_SIMULATED_TOPICS.length];
       output.push(
         this.db.createTrend({
           source,

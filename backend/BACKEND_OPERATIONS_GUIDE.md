@@ -14,6 +14,7 @@ This guide explains how the marketplace automation behaves in production.
 - Setting name: **Topic limit per cycle (1-10)**.
 - Default is `3`; max is `10`.
 - This value is persisted in database-backed admin controls.
+- Topic selection now rotates over simulated trend pool so non-pinned themes vary over time.
 
 ## 3) Auto-suggest / auto-mint cadence
 
@@ -25,6 +26,7 @@ This guide explains how the marketplace automation behaves in production.
 - On each automated cycle, backend pulls trend topics using the configured topic limit and creates one mint candidate from that cycle.
 - Auto-mint can also run in batches:
   - **Auto-mint quantity per cycle (1-10)**
+- A cycle means one scheduler execution at the configured interval.
 
 ## 3.1) Daily minimum (catch-up mode)
 
@@ -63,3 +65,18 @@ This guide explains how the marketplace automation behaves in production.
   - **Daily minimum target (0 = disabled)**
   - **Pipeline enabled**
   - **Schedule enabled**
+
+## 7) Pricing controls
+
+- Go to **Admin > Settings > Pricing Controls**.
+- Pricing order of precedence:
+  1. listing override
+  2. series override
+  3. theme override
+  4. base + token step fallback
+- Configure:
+  - **Base price (USD)**
+  - **Token step (USD)**
+  - **Theme overrides** (`theme=price`)
+  - **Series overrides** (`seriesId=price`)
+  - **Listing overrides** (`listingId=price`)

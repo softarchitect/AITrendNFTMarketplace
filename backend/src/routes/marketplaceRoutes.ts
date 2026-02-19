@@ -7,6 +7,24 @@ export function createMarketplaceRoutes(services: Services): Router {
   const router = Router();
   const ipfsGateways = ["https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/"];
 
+  function roundUsd(value: number): number {
+    return Number(value.toFixed(2));
+  }
+
+  function resolveListingPriceUsd(listing: ListingRecord): number {
+    const pricing = services.db.pricingConfig;
+    const byListing = pricing.listingOverrides[listing.id];
+    if (Number.isFinite(byListing) && byListing > 0) return roundUsd(byListing);
+    const bySeries = pricing.seriesOverrides[String(listing.seriesId)];
+    if (Number.isFinite(bySeries) && bySeries > 0) return roundUsd(bySeries);
+    const byTheme = (listing.themes ?? [])
+      .map((theme) => pricing.themeOverrides[theme.trim()])
+      .find((value) => Number.isFinite(value) && (value as number) > 0);
+    if (Number.isFinite(byTheme) && (byTheme as number) > 0) return roundUsd(byTheme as number);
+    const stepped = pricing.basePriceUsd + (listing.tokenId % 5) * pricing.tokenStepUsd;
+    return roundUsd(Math.max(1, stepped));
+  }
+
   function resolveIpfsUri(uri: string): string {
     const value = uri.trim();
     if (value.startsWith("ipfs://")) {
@@ -63,7 +81,7 @@ export function createMarketplaceRoutes(services: Services): Router {
   router.get("/listings", async (_req, res) => {
     const listings = services.indexer.listAll();
     const withImages = await Promise.all(listings.map((listing) => enrichListingImage(listing)));
-    return res.json(withImages);
+    return res.json(withImages.map((listing) => ({ ...listing, priceUsd: resolveListingPriceUsd(listing) })));
   });
 
   router.get("/listings/:listingId", async (req, res) => {
@@ -72,13 +90,13 @@ export function createMarketplaceRoutes(services: Services): Router {
       return res.status(404).json({ error: "Listing not found" });
     }
     const withImage = await enrichListingImage(listing);
-    return res.json(withImage);
+    return res.json({ ...withImage, priceUsd: resolveListingPriceUsd(withImage) });
   });
 
   router.get("/ownership/:wallet", async (req, res) => {
     const listings = services.indexer.listByOwner(req.params.wallet);
     const withImages = await Promise.all(listings.map((listing) => enrichListingImage(listing)));
-    return res.json(withImages);
+    return res.json(withImages.map((listing) => ({ ...listing, priceUsd: resolveListingPriceUsd(listing) })));
   });
 
   router.get("/receipts/:wallet", (req, res) => {
@@ -163,7 +181,11 @@ export function createMarketplaceRoutes(services: Services): Router {
     }
 
     try {
-      const paymentResult = await services.payment.createPaymentSession(parsed.data);
+      const pricedAmountUsd = resolveListingPriceUsd(listing);
+      const paymentResult = await services.payment.createPaymentSession({
+        ...parsed.data,
+        amountUsd: pricedAmountUsd
+      });
       const payment = paymentResult.payment;
       if (!paymentResult.checkoutUrl) {
         return res.status(502).json({
@@ -176,7 +198,7 @@ export function createMarketplaceRoutes(services: Services): Router {
         tokenId: listing.tokenId,
         sellerAddress: listing.owner,
         buyerAddress: parsed.data.buyerAddress,
-        amountUsd: parsed.data.amountUsd,
+        amountUsd: pricedAmountUsd,
         currency: parsed.data.currency,
         idempotencyKey: parsed.data.idempotencyKey,
         checkoutUrl: paymentResult.checkoutUrl,

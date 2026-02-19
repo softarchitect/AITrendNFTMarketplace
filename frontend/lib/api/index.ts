@@ -14,6 +14,7 @@ interface ListingDto {
   owner: string
   tokenUri: string
   imageUrl?: string
+  priceUsd?: number
   themes?: string[]
   status: "minted" | "listed" | "sold" | "transferred"
   createdAt: string
@@ -185,6 +186,14 @@ interface GatewayConfigDto {
   webhookSignatureHeader: string
 }
 
+interface PricingConfigDto {
+  basePriceUsd: number
+  tokenStepUsd: number
+  themeOverrides: Record<string, number>
+  seriesOverrides: Record<string, number>
+  listingOverrides: Record<string, number>
+}
+
 interface MarketplaceGatewayInfoDto {
   provider: string
   mode: "sandbox" | "live"
@@ -260,7 +269,10 @@ function mapListingStatus(status: ListingDto["status"]): NFT["status"] {
 }
 
 function mapListingToNft(listing: ListingDto): NFT {
-  const basePrice = Number((0.015 + (listing.tokenId % 5) * 0.005).toFixed(3))
+  const configuredUsd = listing.priceUsd
+  const fallbackUsd = Number((100 + (listing.tokenId % 5) * 15).toFixed(2))
+  const usdPrice = Number.isFinite(configuredUsd) && (configuredUsd ?? 0) > 0 ? Number(configuredUsd) : fallbackUsd
+  const basePrice = Number((usdPrice / 3000).toFixed(6))
   const listingThemes = listing.themes && listing.themes.length > 0 ? listing.themes : ["AI Art"]
   return {
     id: listing.id,
@@ -279,7 +291,7 @@ function mapListingToNft(listing: ListingDto): NFT {
     editionAvailable: listing.editionAvailable ?? (listing.status === "listed" ? 1 : 0),
     editionNumber: listing.editionNumber ?? 1,
     priceEth: basePrice,
-    priceFiat: Number((basePrice * 3000).toFixed(2)),
+    priceFiat: usdPrice,
     currency: "USD",
     ipfsCid: listing.tokenUri.replace("ipfs://", ""),
     traits: [
@@ -843,6 +855,19 @@ export async function updateGatewayConfig(
   patch: Partial<GatewayConfigDto>
 ): Promise<GatewayConfigDto> {
   return apiRequest<GatewayConfigDto>("/api/admin/gateway-config", {
+    method: "POST",
+    body: patch,
+  })
+}
+
+export async function getPricingConfig(): Promise<PricingConfigDto> {
+  return apiRequest<PricingConfigDto>("/api/admin/pricing-config")
+}
+
+export async function updatePricingConfig(
+  patch: Partial<PricingConfigDto>
+): Promise<PricingConfigDto> {
+  return apiRequest<PricingConfigDto>("/api/admin/pricing-config", {
     method: "POST",
     body: patch,
   })

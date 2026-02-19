@@ -47,14 +47,20 @@ export class PipelineService {
 
     const resolvedThemeOverride = input?.themeOverride?.trim().replace(/\s+/g, " ");
     const resolvedLimit = Math.max(1, Math.min(10, input?.limit ?? this.db.adminControls.trendTopicLimit ?? 3));
-    const topic = resolvedThemeOverride
+    const topicCandidates = resolvedThemeOverride
       ? this.db.createTrend({
           source: "manual",
           topic: resolvedThemeOverride,
           score: 100,
           pinned: true
         })
-      : this.trends.ingestSimulatedTrends(resolvedLimit)[0];
+      : undefined;
+    const topic =
+      topicCandidates ??
+      (() => {
+        const candidates = this.trends.ingestSimulatedTrends(resolvedLimit);
+        return candidates.find((item) => !item.pinned) ?? candidates[0];
+      })();
     if (!topic) {
       throw new Error("No trend topic available");
     }

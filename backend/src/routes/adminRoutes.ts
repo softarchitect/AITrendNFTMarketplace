@@ -848,6 +848,24 @@ export function createAdminRoutes(services: Services): Router {
     const rejectedWebhooks = recentWebhookEvents.filter((item) => item.status === "rejected").length;
     const hasWebhookFailures = rejectedWebhooks > 0;
     const listingsCount = services.db.listings.size;
+    const currentHourKey = now.slice(0, 13);
+    const currentHourCount = services.db.mintCounters.perHour[currentHourKey] ?? 0;
+    const mintedToday = services.db.mintCounters.perDay;
+    const dailyCap = services.db.adminControls.dailyCap;
+    const hourlyCap = services.db.adminControls.hourlyCap;
+    const dailyMinimumTarget = services.db.adminControls.dailyMinimumTarget;
+    const remainingDailyCap = Math.max(0, dailyCap - mintedToday);
+    const remainingHourlyCap = Math.max(0, hourlyCap - currentHourCount);
+    const nextIntervalMinutes = Math.max(1, services.db.adminControls.autoMintIntervalMinutes);
+    const recentTrends = [...services.db.trends.values()]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 50);
+    const distinctTopics24h = new Set(
+      recentTrends
+        .filter((item) => Date.now() - new Date(item.createdAt).getTime() <= 24 * 60 * 60 * 1000)
+        .map((item) => item.topic.toLowerCase())
+    ).size;
+    const newestTrendAt = recentTrends[0]?.createdAt;
     const recentAuditFailure = services.db.auditLogs.find((item) =>
       ["admin_login_failed", "partner_api_call"].includes(item.action)
     );
@@ -892,6 +910,34 @@ export function createAdminRoutes(services: Services): Router {
         lastChecked: now,
         detail: listingsCount === 0 ? "No listings indexed yet" : `${listingsCount} listing(s) currently indexed`,
         lastIncident: listingsCount === 0 ? "No listings indexed yet" : `${listingsCount} listing(s) indexed`
+      },
+      {
+        id: "scheduler",
+        name: "Mint Scheduler",
+        status:
+          !services.db.adminControls.pipelineEnabled || !services.db.adminControls.scheduleEnabled
+            ? "Degraded"
+            : remainingDailyCap === 0 || remainingHourlyCap === 0
+              ? "Degraded"
+              : "Operational",
+        lastChecked: now,
+        detail: `interval=${nextIntervalMinutes}m, batch=${services.db.adminControls.autoMintBatchSize}, today=${mintedToday}/${dailyCap}, thisHour=${currentHourCount}/${hourlyCap}, minTarget=${dailyMinimumTarget}`,
+        lastIncident:
+          !services.db.adminControls.pipelineEnabled || !services.db.adminControls.scheduleEnabled
+            ? "Pipeline or schedule toggle is disabled"
+            : remainingDailyCap === 0
+              ? "Daily cap reached"
+              : remainingHourlyCap === 0
+                ? "Hourly cap reached"
+                : undefined
+      },
+      {
+        id: "themes",
+        name: "Theme Rotation",
+        status: distinctTopics24h <= 1 ? "Degraded" : "Operational",
+        lastChecked: now,
+        detail: `activeThemes=${services.trends.getThemes().filter((item) => item.active).length}, distinctTopics24h=${distinctTopics24h}, latestTrend=${newestTrendAt ? new Date(newestTrendAt).toLocaleTimeString() : "none"}`,
+        lastIncident: distinctTopics24h <= 1 ? "Low theme/topic variation detected in last 24h" : undefined
       },
       {
         id: "auth",
@@ -1050,6 +1096,10 @@ export function createAdminRoutes(services: Services): Router {
     return res.json(services.db.gatewaySettings);
   });
 
+  router.get("/pricing-config", (_req, res) => {
+    return res.json(services.db.pricingConfig);
+  });
+
   router.post("/gateway-config", (req, res) => {
     const schema = z.object({
       provider: z.enum(["mock", "generic", "vellis", "wert", "nowpayments"]).optional(),
@@ -1076,6 +1126,26 @@ export function createAdminRoutes(services: Services): Router {
       webhookSignatureHeader: parsed.data.webhookSignatureHeader
     });
     appendAuditLog("gateway_config_updated", parsed.data, res.locals.adminActorEmail);
+    return res.json(updated);
+  });
+
+  router.post("/pricing-config", (req, res) => {
+    const schema = z.object({
+      basePriceUsd: z.number().positive().optional(),
+      tokenStepUsd: z.number().min(0).optional(),
+      themeOverrides: z.record(z.string(), z.number().positive()).optional(),
+      seriesOverrides: z.record(z.string(), z.number().positive()).optional(),
+      listingOverrides: z.record(z.string(), z.number().positive()).optional()
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    if (Object.keys(parsed.data).length === 0) {
+      return res.status(400).json({ error: "No pricing fields provided" });
+    }
+    const updated = services.db.updatePricingConfig(parsed.data);
+    appendAuditLog("pricing_config_updated", parsed.data, res.locals.adminActorEmail);
     return res.json(updated);
   });
 

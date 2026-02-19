@@ -8,7 +8,16 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageTransition } from "@/components/page-transition"
-import { getGatewayConfig, getGatewayHealth, getMintControls, getWebhookLogs, updateGatewayConfig, updateMintControls } from "@/lib/api"
+import {
+  getGatewayConfig,
+  getGatewayHealth,
+  getMintControls,
+  getPricingConfig,
+  getWebhookLogs,
+  updateGatewayConfig,
+  updateMintControls,
+  updatePricingConfig
+} from "@/lib/api"
 import { toast } from "sonner"
 
 export default function AdminSettingsPage() {
@@ -29,6 +38,11 @@ export default function AdminSettingsPage() {
   const [autoMintIntervalMinutes, setAutoMintIntervalMinutes] = useState("15")
   const [autoMintBatchSize, setAutoMintBatchSize] = useState("1")
   const [dailyMinimumTarget, setDailyMinimumTarget] = useState("0")
+  const [basePriceUsd, setBasePriceUsd] = useState("100")
+  const [tokenStepUsd, setTokenStepUsd] = useState("15")
+  const [themePriceOverridesText, setThemePriceOverridesText] = useState("")
+  const [seriesPriceOverridesText, setSeriesPriceOverridesText] = useState("")
+  const [listingPriceOverridesText, setListingPriceOverridesText] = useState("")
   const [pipelineEnabled, setPipelineEnabled] = useState(true)
   const [scheduleEnabled, setScheduleEnabled] = useState(true)
   const [webhookLogs, setWebhookLogs] = useState<Array<{ id: string; status: string; createdAt: string; externalRef?: string; reason?: string }>>([])
@@ -74,14 +88,31 @@ export default function AdminSettingsPage() {
   }
 
   useEffect(() => {
-    Promise.all([getMintControls(), refreshRuntimeStatus()])
-      .then(([controls]) => {
+    Promise.all([getMintControls(), getPricingConfig(), refreshRuntimeStatus()])
+      .then(([controls, pricing]) => {
         setDailyCap(String(controls.dailyCap))
         setHourlyCap(String(controls.hourlyCap))
         setTrendTopicLimit(String(controls.trendTopicLimit ?? 3))
         setAutoMintIntervalMinutes(String(controls.autoMintIntervalMinutes ?? 15))
         setAutoMintBatchSize(String(controls.autoMintBatchSize ?? 1))
         setDailyMinimumTarget(String(controls.dailyMinimumTarget ?? 0))
+        setBasePriceUsd(String(pricing.basePriceUsd ?? 100))
+        setTokenStepUsd(String(pricing.tokenStepUsd ?? 15))
+        setThemePriceOverridesText(
+          Object.entries(pricing.themeOverrides ?? {})
+            .map(([key, value]) => `${key}=${value}`)
+            .join("\n")
+        )
+        setSeriesPriceOverridesText(
+          Object.entries(pricing.seriesOverrides ?? {})
+            .map(([key, value]) => `${key}=${value}`)
+            .join("\n")
+        )
+        setListingPriceOverridesText(
+          Object.entries(pricing.listingOverrides ?? {})
+            .map(([key, value]) => `${key}=${value}`)
+            .join("\n")
+        )
         setPipelineEnabled(controls.pipelineEnabled)
         setScheduleEnabled(controls.scheduleEnabled)
       })
@@ -98,6 +129,8 @@ export default function AdminSettingsPage() {
     const parsedAutoMintIntervalMinutes = Number(autoMintIntervalMinutes)
     const parsedAutoMintBatchSize = Number(autoMintBatchSize)
     const parsedDailyMinimumTarget = Number(dailyMinimumTarget)
+    const parsedBasePriceUsd = Number(basePriceUsd)
+    const parsedTokenStepUsd = Number(tokenStepUsd)
     if (!Number.isFinite(parsedDailyCap) || parsedDailyCap < 1) {
       toast.error("Daily cap must be a positive number.")
       return
@@ -130,6 +163,46 @@ export default function AdminSettingsPage() {
       toast.error("Daily minimum target cannot exceed daily cap.")
       return
     }
+    if (!Number.isFinite(parsedBasePriceUsd) || parsedBasePriceUsd <= 0) {
+      toast.error("Base price must be greater than zero.")
+      return
+    }
+    if (!Number.isFinite(parsedTokenStepUsd) || parsedTokenStepUsd < 0) {
+      toast.error("Token step must be zero or higher.")
+      return
+    }
+
+    function parseOverrideLines(input: string, label: string): Record<string, number> {
+      const result: Record<string, number> = {}
+      const lines = input
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+      for (const line of lines) {
+        const [keyRaw, valueRaw] = line.split("=").map((part) => part?.trim())
+        if (!keyRaw || !valueRaw) {
+          throw new Error(`Invalid ${label} override line: "${line}". Use key=value format.`)
+        }
+        const parsed = Number(valueRaw)
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          throw new Error(`Invalid ${label} price for "${keyRaw}". Value must be a positive number.`)
+        }
+        result[keyRaw] = parsed
+      }
+      return result
+    }
+
+    let themeOverrides: Record<string, number>
+    let seriesOverrides: Record<string, number>
+    let listingOverrides: Record<string, number>
+    try {
+      themeOverrides = parseOverrideLines(themePriceOverridesText, "theme")
+      seriesOverrides = parseOverrideLines(seriesPriceOverridesText, "series")
+      listingOverrides = parseOverrideLines(listingPriceOverridesText, "listing")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid pricing override format")
+      return
+    }
     const normalizedWebhookHeader = webhookHeader.trim().toLowerCase()
     if (!/^[a-z0-9-]+$/i.test(normalizedWebhookHeader)) {
       toast.error("Webhook signature header must contain only letters, numbers, and dashes.")
@@ -147,6 +220,13 @@ export default function AdminSettingsPage() {
           dailyMinimumTarget: parsedDailyMinimumTarget,
           pipelineEnabled,
           scheduleEnabled
+        }),
+        updatePricingConfig({
+          basePriceUsd: parsedBasePriceUsd,
+          tokenStepUsd: parsedTokenStepUsd,
+          themeOverrides,
+          seriesOverrides,
+          listingOverrides
         }),
         updateGatewayConfig({
           provider: gatewayProvider,
@@ -248,6 +328,58 @@ export default function AdminSettingsPage() {
                   <span className="text-xs text-muted-foreground">mode: {gatewayMode}</span>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">{runtimeAdapterNote()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-foreground">
+              <CreditCard className="h-5 w-5 text-primary" /> Pricing Controls
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Configure global pricing and optional overrides (theme/series/listing)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-foreground">Base price (USD)</Label>
+                <Input type="number" value={basePriceUsd} min={1} step="0.01" onChange={(e) => setBasePriceUsd(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Token step (USD)</Label>
+                <Input type="number" value={tokenStepUsd} min={0} step="0.01" onChange={(e) => setTokenStepUsd(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div className="space-y-2">
+                <Label className="text-foreground">Theme overrides (one per line: theme=price)</Label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={themePriceOverridesText}
+                  onChange={(e) => setThemePriceOverridesText(e.target.value)}
+                  placeholder={"AI Art=120\nFuture Cities=150"}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Series overrides (one per line: seriesId=price)</Label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={seriesPriceOverridesText}
+                  onChange={(e) => setSeriesPriceOverridesText(e.target.value)}
+                  placeholder={"1=99\n2=149"}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Listing overrides (one per line: listingId=price)</Label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={listingPriceOverridesText}
+                  onChange={(e) => setListingPriceOverridesText(e.target.value)}
+                  placeholder={"listing-id-here=199"}
+                />
               </div>
             </div>
           </CardContent>

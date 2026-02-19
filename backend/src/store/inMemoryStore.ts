@@ -128,6 +128,14 @@ export interface GatewaySettingsRecord {
   webhookSignatureHeader: string;
 }
 
+export interface PricingConfigRecord {
+  basePriceUsd: number;
+  tokenStepUsd: number;
+  themeOverrides: Record<string, number>;
+  seriesOverrides: Record<string, number>;
+  listingOverrides: Record<string, number>;
+}
+
 export interface WebhookEventRecord {
   id: string;
   kind: "payment";
@@ -178,6 +186,7 @@ interface StoreSnapshot {
   mintCounters: MintCounters;
   adminControls: AdminControlsRecord;
   gatewaySettings: GatewaySettingsRecord;
+  pricingConfig: PricingConfigRecord;
   defaultEditionSize: number;
   editionOverrides: Array<[string, number]>;
   partnerApiKeys: PartnerApiKeyRecord[];
@@ -196,6 +205,20 @@ function createDefaultThemeRecords(): AdminThemeRecord[] {
     createdAt: now,
     updatedAt: now
   }));
+}
+
+function sanitizePricingMap(
+  source: Record<string, unknown> | undefined,
+  keyNormalizer: (key: string) => string | undefined
+): Record<string, number> {
+  const output: Record<string, number> = {};
+  for (const [rawKey, rawValue] of Object.entries(source ?? {})) {
+    const normalizedKey = keyNormalizer(rawKey);
+    const numericValue = Number(rawValue);
+    if (!normalizedKey || !Number.isFinite(numericValue) || numericValue <= 0) continue;
+    output[normalizedKey] = numericValue;
+  }
+  return output;
 }
 
 export class InMemoryStore {
@@ -247,6 +270,13 @@ export class InMemoryStore {
     mode: config.features.mockPayment || config.payment.provider === "mock" ? "sandbox" : "live",
     webhookVerificationEnabled: Boolean(config.payment.webhookSecret),
     webhookSignatureHeader: config.payment.webhookSignatureHeader
+  };
+  public pricingConfig: PricingConfigRecord = {
+    basePriceUsd: 100,
+    tokenStepUsd: 15,
+    themeOverrides: {},
+    seriesOverrides: {},
+    listingOverrides: {}
   };
   public mintCounters: MintCounters = {
     date: new Date().toISOString().slice(0, 10),
@@ -409,6 +439,24 @@ export class InMemoryStore {
         webhookSignatureHeader: snapshot.gatewaySettings.webhookSignatureHeader
       };
     }
+    if (snapshot.pricingConfig) {
+      this.pricingConfig = {
+        basePriceUsd: Math.max(1, Number(snapshot.pricingConfig.basePriceUsd ?? 100)),
+        tokenStepUsd: Math.max(0, Number(snapshot.pricingConfig.tokenStepUsd ?? 15)),
+        themeOverrides: sanitizePricingMap(snapshot.pricingConfig.themeOverrides, (key) => {
+          const normalized = key.trim();
+          return normalized.length > 0 ? normalized : undefined;
+        }),
+        seriesOverrides: sanitizePricingMap(snapshot.pricingConfig.seriesOverrides, (key) => {
+          const numeric = Number(key);
+          return numeric > 0 ? String(numeric) : undefined;
+        }),
+        listingOverrides: sanitizePricingMap(snapshot.pricingConfig.listingOverrides, (key) => {
+          const normalized = key.trim();
+          return normalized.length > 0 ? normalized : undefined;
+        })
+      };
+    }
     if (typeof snapshot.defaultEditionSize === "number") {
       this.defaultEditionSize = snapshot.defaultEditionSize;
     }
@@ -444,6 +492,7 @@ export class InMemoryStore {
       mintCounters: this.mintCounters,
       adminControls: this.adminControls,
       gatewaySettings: this.gatewaySettings,
+      pricingConfig: this.pricingConfig,
       defaultEditionSize: this.defaultEditionSize,
       editionOverrides: [...this.editionOverrides.entries()],
       partnerApiKeys: [...this.partnerApiKeys.values()],
@@ -1143,6 +1192,44 @@ export class InMemoryStore {
     return this.gatewaySettings;
   }
 
+  updatePricingConfig(patch: Partial<PricingConfigRecord>): PricingConfigRecord {
+    const normalizedThemeOverrides =
+      patch.themeOverrides !== undefined
+        ? sanitizePricingMap(patch.themeOverrides, (key) => {
+            const normalized = key.trim();
+            return normalized.length > 0 ? normalized : undefined;
+          })
+        : this.pricingConfig.themeOverrides;
+    const normalizedSeriesOverrides =
+      patch.seriesOverrides !== undefined
+        ? sanitizePricingMap(patch.seriesOverrides, (key) => {
+            const numeric = Number(key);
+            return numeric > 0 ? String(numeric) : undefined;
+          })
+        : this.pricingConfig.seriesOverrides;
+    const normalizedListingOverrides =
+      patch.listingOverrides !== undefined
+        ? sanitizePricingMap(patch.listingOverrides, (key) => {
+            const normalized = key.trim();
+            return normalized.length > 0 ? normalized : undefined;
+          })
+        : this.pricingConfig.listingOverrides;
+    const nextBase = patch.basePriceUsd !== undefined ? Math.max(1, Number(patch.basePriceUsd)) : this.pricingConfig.basePriceUsd;
+    const nextStep = patch.tokenStepUsd !== undefined ? Math.max(0, Number(patch.tokenStepUsd)) : this.pricingConfig.tokenStepUsd;
+
+    this.pricingConfig = {
+      ...this.pricingConfig,
+      ...patch,
+      basePriceUsd: nextBase,
+      tokenStepUsd: nextStep,
+      themeOverrides: normalizedThemeOverrides,
+      seriesOverrides: normalizedSeriesOverrides,
+      listingOverrides: normalizedListingOverrides
+    };
+    this.touch();
+    return this.pricingConfig;
+  }
+
   appendAuditLog(action: string, actor: string, details: Record<string, unknown>): AuditLogRecord {
     const entry: AuditLogRecord = {
       id: randomUUID(),
@@ -1394,12 +1481,14 @@ async function ensurePgPool(): Promise<Pool> {
       gateway_provider TEXT NOT NULL DEFAULT 'mock',
       gateway_mode TEXT NOT NULL DEFAULT 'sandbox',
       webhook_verification_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      webhook_signature_header TEXT NOT NULL DEFAULT 'x-payment-signature'
+      webhook_signature_header TEXT NOT NULL DEFAULT 'x-payment-signature',
+      pricing_config JSONB NOT NULL DEFAULT '{}'::jsonb
     );
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gateway_provider TEXT NOT NULL DEFAULT 'mock';
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gateway_mode TEXT NOT NULL DEFAULT 'sandbox';
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS webhook_verification_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS webhook_signature_header TEXT NOT NULL DEFAULT 'x-payment-signature';
+    ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pricing_config JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE TABLE IF NOT EXISTS edition_overrides (
       series_key TEXT PRIMARY KEY,
       size INTEGER NOT NULL
@@ -1744,6 +1833,48 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
               : "x-payment-signature"
         }
       : undefined,
+    pricingConfig: appSettingsRows.rows[0]
+      ? {
+          basePriceUsd: Math.max(
+            1,
+            Number(
+              (appSettingsRows.rows[0].pricing_config as { basePriceUsd?: unknown } | undefined)
+                ?.basePriceUsd ?? 100
+            )
+          ),
+          tokenStepUsd: Math.max(
+            0,
+            Number(
+              (appSettingsRows.rows[0].pricing_config as { tokenStepUsd?: unknown } | undefined)
+                ?.tokenStepUsd ?? 15
+            )
+          ),
+          themeOverrides: sanitizePricingMap(
+            (appSettingsRows.rows[0].pricing_config as { themeOverrides?: Record<string, unknown> } | undefined)
+              ?.themeOverrides,
+            (key) => {
+              const normalized = key.trim();
+              return normalized.length > 0 ? normalized : undefined;
+            }
+          ),
+          seriesOverrides: sanitizePricingMap(
+            (appSettingsRows.rows[0].pricing_config as { seriesOverrides?: Record<string, unknown> } | undefined)
+              ?.seriesOverrides,
+            (key) => {
+              const numeric = Number(key);
+              return numeric > 0 ? String(numeric) : undefined;
+            }
+          ),
+          listingOverrides: sanitizePricingMap(
+            (appSettingsRows.rows[0].pricing_config as { listingOverrides?: Record<string, unknown> } | undefined)
+              ?.listingOverrides,
+            (key) => {
+              const normalized = key.trim();
+              return normalized.length > 0 ? normalized : undefined;
+            }
+          )
+        }
+      : undefined,
     defaultEditionSize: appSettingsRows.rows[0]
       ? Number(appSettingsRows.rows[0].default_edition_size)
       : undefined,
@@ -2038,14 +2169,23 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
     await client.query("DELETE FROM app_settings WHERE id = 1");
     await client.query(
       `INSERT INTO app_settings
-       (id, default_edition_size, gateway_provider, gateway_mode, webhook_verification_enabled, webhook_signature_header)
-       VALUES (1, $1, $2, $3, $4, $5)`,
+       (
+        id,
+        default_edition_size,
+        gateway_provider,
+        gateway_mode,
+        webhook_verification_enabled,
+        webhook_signature_header,
+        pricing_config
+       )
+       VALUES (1, $1, $2, $3, $4, $5, $6)`,
       [
         snapshot.defaultEditionSize,
         snapshot.gatewaySettings.provider,
         snapshot.gatewaySettings.mode,
         snapshot.gatewaySettings.webhookVerificationEnabled,
-        snapshot.gatewaySettings.webhookSignatureHeader
+        snapshot.gatewaySettings.webhookSignatureHeader,
+        JSON.stringify(snapshot.pricingConfig)
       ]
     );
 
