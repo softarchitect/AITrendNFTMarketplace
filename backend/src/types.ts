@@ -1,4 +1,4 @@
-export type TrendSource = "twitter" | "instagram" | "reddit" | "manual";
+export type TrendSource = "twitter" | "instagram" | "reddit" | "googletrends" | "manual";
 
 export type PaymentStatus =
   | "created"

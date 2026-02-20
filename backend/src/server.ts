@@ -93,9 +93,37 @@ function startAutoMintScheduler(services: Services): void {
   logger.info({ tickMs }, "Auto mint scheduler started");
 }
 
+function startTrendPollingScheduler(services: Services): void {
+  let running = false;
+  const intervalMs = Math.max(1, config.trends.pollIntervalMinutes) * 60_000;
+  setInterval(() => {
+    if (running) return;
+    running = true;
+    void services.trends
+      .ingestTrends(config.trends.fetchLimit)
+      .then((items) => {
+        services.db.appendAuditLog("trend_poll_completed", "system", {
+          count: items.length,
+          sources: services.trends.getSources()
+        });
+      })
+      .catch((error) => {
+        services.db.appendAuditLog("trend_poll_failed", "system", {
+          reason: error instanceof Error ? error.message : "Trend poll failed"
+        });
+        logger.warn({ err: error }, "Trend polling failed");
+      })
+      .finally(() => {
+        running = false;
+      });
+  }, intervalMs);
+  logger.info({ intervalMs }, "Trend polling scheduler started");
+}
+
 async function bootstrap() {
   await initializeStorePersistence();
   const services = createServices();
+  startTrendPollingScheduler(services);
   startAutoMintScheduler(services);
   const app = createApp(services);
   app.listen(config.port, () => {

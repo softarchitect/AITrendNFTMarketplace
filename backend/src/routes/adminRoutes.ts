@@ -8,6 +8,13 @@ import { checkPersistenceHealth } from "../store/inMemoryStore";
 
 export function createAdminRoutes(services: Services): Router {
   const router = Router();
+  const seriesSnapshotCache: {
+    seriesIds: number[];
+    updatedAt: number;
+  } = {
+    seriesIds: [],
+    updatedAt: 0
+  };
   const loginAttempts = new Map<
     string,
     {
@@ -162,6 +169,90 @@ export function createAdminRoutes(services: Services): Router {
 
   function clearLoginFailures(key: string): void {
     loginAttempts.delete(key);
+  }
+
+  function updateSeriesSnapshotCache(seriesIds: number[]): void {
+    const normalized = [...new Set(seriesIds.filter((id) => Number.isFinite(id) && id > 0))].sort((a, b) => a - b);
+    if (normalized.length === 0) return;
+    seriesSnapshotCache.seriesIds = normalized;
+    seriesSnapshotCache.updatedAt = Date.now();
+  }
+
+  function getKnownSeriesIdsFromStore(): number[] {
+    const fromListings = [...services.db.listings.values()]
+      .map((item) => item.seriesId)
+      .filter((id) => Number.isFinite(id) && id > 0);
+    const fromMints = [...services.db.mints.values()]
+      .map((item) => item.seriesId)
+      .filter((id) => Number.isFinite(id) && id > 0);
+    const fromAudit = services.db.auditLogs
+      .filter(
+        (entry) =>
+          entry.action === "series_created_on_chain" || entry.action === "series_created_next_on_chain"
+      )
+      .map((entry) => Number(entry.details.seriesId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    return [...new Set([config.defaultSeriesId, ...fromListings, ...fromMints, ...fromAudit])].sort((a, b) => a - b);
+  }
+
+  function deriveSeriesCandidates(templateRaw: string, existingSeriesIds: number[]): number[] {
+    const template = (templateRaw || "next").trim().toLowerCase();
+    const sorted = [...existingSeriesIds].sort((a, b) => a - b);
+    const maxCurrent = sorted.length > 0 ? sorted[sorted.length - 1] : 0;
+    const next = Math.max(1, maxCurrent + 1);
+    if (template === "next") {
+      return [next];
+    }
+    if (template.startsWith("start:")) {
+      const start = Number(template.slice("start:".length));
+      if (Number.isFinite(start) && start > 0) {
+        return [Math.max(next, Math.trunc(start))];
+      }
+      return [next];
+    }
+    if (template.startsWith("list:")) {
+      const values = template
+        .slice("list:".length)
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .map((value) => Math.trunc(value));
+      return [...new Set([...values, next])];
+    }
+    if (template.startsWith("range:")) {
+      const [startRaw, endRaw] = template
+        .slice("range:".length)
+        .split("-")
+        .map((item) => Number(item.trim()));
+      if (Number.isFinite(startRaw) && Number.isFinite(endRaw) && startRaw > 0 && endRaw >= startRaw) {
+        const range: number[] = [];
+        for (let id = Math.trunc(startRaw); id <= Math.trunc(endRaw); id += 1) {
+          range.push(id);
+          if (range.length >= 300) break;
+        }
+        return [...new Set([...range, next])];
+      }
+      return [next];
+    }
+    return [next];
+  }
+
+  function resolveSeriesMetadataRoot(template: string | undefined, seriesId: number): string {
+    const raw = template?.trim() ?? "";
+    if (!raw) return "";
+    return raw.replace(/\{seriesId\}/gi, String(seriesId));
+  }
+
+  async function getAvailableSeriesWithTimeout(
+    maxSeries: number,
+    timeoutMs = 8000
+  ): Promise<Awaited<ReturnType<Services["minter"]["getAvailableSeries"]>>> {
+    return Promise.race([
+      services.minter.getAvailableSeries(maxSeries),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("RPC timeout while loading series data")), timeoutMs);
+      })
+    ]);
   }
 
   router.post("/auth/login", (req, res) => {
@@ -529,7 +620,8 @@ export function createAdminRoutes(services: Services): Router {
         overrides: [...services.db.editionOverrides.entries()].map(([seriesKey, size]) => ({ seriesKey, size }))
       },
       adminControls: services.db.adminControls,
-      gatewaySettings: services.db.gatewaySettings
+      gatewaySettings: services.db.gatewaySettings,
+      seriesLifecycle: services.db.seriesLifecycleConfig
     });
   });
 
@@ -567,20 +659,27 @@ export function createAdminRoutes(services: Services): Router {
     if (!item) {
       return res.status(404).json({ error: "Trend source not found" });
     }
-    const detail = `Source ${source} responded in simulated mode (${item.rateLimitMode}).`;
+    const health = services.trends.getSourceHealth().find((entry) => entry.source === source);
+    const detail = health?.lastError
+      ? `Source ${source} last error: ${health.lastError}`
+      : `Source ${source} test passed (${item.rateLimitMode}).`;
     appendAuditLog(
       "trend_source_tested",
-      { source, status: item.status, rateLimitMode: item.rateLimitMode, ok: true },
+      { source, status: item.status, rateLimitMode: item.rateLimitMode, ok: !health?.lastError },
       res.locals.adminActorEmail
     );
     return res.json({
       source,
-      ok: true,
+      ok: !health?.lastError,
       detail,
       testedAt: new Date().toISOString(),
       status: item.status,
       rateLimitMode: item.rateLimitMode
     });
+  });
+
+  router.get("/trend-source-health", (_req, res) => {
+    return res.json(services.trends.getSourceHealth());
   });
 
   router.post("/pinned-themes", (req, res) => {
@@ -720,12 +819,188 @@ export function createAdminRoutes(services: Services): Router {
     }
     try {
       const series = await services.minter.getAvailableSeries(parsed.data.max ?? 30);
+      updateSeriesSnapshotCache(series.map((item) => item.seriesId));
       return res.json({
         mode: services.minter.mode,
         defaultSeriesId: config.defaultSeriesId,
         series
       });
     } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/series", async (req, res, next) => {
+    const schema = z.object({
+      seriesId: z.number().int().positive(),
+      maxSupply: z.number().int().positive(),
+      metadataRoot: z.string().max(300).optional()
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    try {
+      const result = await services.minter.createSeries({
+        seriesId: parsed.data.seriesId,
+        maxSupply: parsed.data.maxSupply,
+        metadataRoot: parsed.data.metadataRoot
+      });
+      appendAuditLog(
+        "series_created_on_chain",
+        { seriesId: parsed.data.seriesId, maxSupply: parsed.data.maxSupply, txHash: result.txHash },
+        res.locals.adminActorEmail
+      );
+      updateSeriesSnapshotCache([...(seriesSnapshotCache.seriesIds ?? []), parsed.data.seriesId]);
+      return res.status(201).json({
+        seriesId: parsed.data.seriesId,
+        maxSupply: parsed.data.maxSupply,
+        metadataRoot: parsed.data.metadataRoot ?? "",
+        txHash: result.txHash
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/series/preview-next", async (req, res, next) => {
+    const schema = z.object({
+      max: z.coerce.number().int().positive().max(120).optional(),
+      seriesIdTemplate: z.string().min(1).max(120).optional()
+    });
+    const parsed = schema.safeParse(req.query ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    try {
+      const inspectMax = parsed.data.max ?? 4;
+      let series: Awaited<ReturnType<Services["minter"]["getAvailableSeries"]>> = [];
+      let chainReachable = true;
+      try {
+        series = await getAvailableSeriesWithTimeout(inspectMax, 1500);
+        updateSeriesSnapshotCache(series.map((item) => item.seriesId));
+      } catch {
+        chainReachable = false;
+      }
+      const cachedIdsFresh =
+        seriesSnapshotCache.updatedAt > 0 && Date.now() - seriesSnapshotCache.updatedAt < 30 * 60 * 1000
+          ? seriesSnapshotCache.seriesIds
+          : [];
+      const knownFromStore = getKnownSeriesIdsFromStore();
+      const existingIds =
+        series.length > 0
+          ? series.map((item) => item.seriesId)
+          : cachedIdsFresh.length > 0
+            ? cachedIdsFresh
+            : knownFromStore.length > 0
+              ? knownFromStore
+              : [Math.max(1, config.defaultSeriesId)];
+      const template = parsed.data.seriesIdTemplate ?? services.db.seriesLifecycleConfig.seriesIdTemplate;
+      const existingSet = new Set(existingIds);
+      const candidates = deriveSeriesCandidates(template, existingIds);
+      const nextSeriesId = candidates.find((id) => !existingSet.has(id)) ?? Math.max(1, ...existingIds, 0) + 1;
+      return res.json({
+        mode: services.minter.mode,
+        template,
+        nextSeriesId,
+        existsOnChain: existingSet.has(nextSeriesId),
+        chainReachable,
+        warning:
+          chainReachable || services.minter.mode === "mock"
+            ? undefined
+            : cachedIdsFresh.length > 0
+              ? "RPC scan is slow/unreachable. Showing preview from last known series snapshot."
+              : knownFromStore.length > 0
+                ? "RPC scan is slow/unreachable. Showing preview from persisted local records."
+              : "RPC scan is slow/unreachable. Result is a template-only preview."
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/series/create-next", async (req, res, next) => {
+    const schema = z.object({
+      seriesIdTemplate: z.string().min(1).max(120).optional(),
+      defaultSeriesMaxSupply: z.number().int().positive().optional(),
+      seriesMetadataRootTemplate: z.string().max(300).optional()
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    try {
+      let series: Awaited<ReturnType<Services["minter"]["getAvailableSeries"]>> = [];
+      try {
+        series = await getAvailableSeriesWithTimeout(12, 4000);
+        updateSeriesSnapshotCache(series.map((item) => item.seriesId));
+      } catch {
+        series = [];
+      }
+      const existingIds =
+        series.length > 0
+          ? series.map((item) => item.seriesId)
+          : [Math.max(1, config.defaultSeriesId)];
+      const existingSet = new Set(existingIds);
+      const template = parsed.data.seriesIdTemplate ?? services.db.seriesLifecycleConfig.seriesIdTemplate;
+      const candidates = deriveSeriesCandidates(template, existingIds);
+      let nextSeriesId = candidates.find((id) => !existingSet.has(id)) ?? Math.max(1, ...existingIds, 0) + 1;
+      const maxSupply = parsed.data.defaultSeriesMaxSupply ?? services.db.seriesLifecycleConfig.defaultSeriesMaxSupply;
+      const metadataRootTemplate =
+        parsed.data.seriesMetadataRootTemplate ?? services.db.seriesLifecycleConfig.seriesMetadataRootTemplate;
+      let created:
+        | {
+            txHash: string;
+          }
+        | undefined;
+      let lastCreateError: unknown;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const metadataRoot = resolveSeriesMetadataRoot(metadataRootTemplate, nextSeriesId);
+          created = await services.minter.createSeries({
+            seriesId: nextSeriesId,
+            maxSupply,
+            metadataRoot
+          });
+          break;
+        } catch (error) {
+          lastCreateError = error;
+          const msg = error instanceof Error ? error.message.toLowerCase() : "";
+          if (msg.includes("already exists")) {
+            nextSeriesId += 1;
+            continue;
+          }
+          throw error;
+        }
+      }
+      if (!created) {
+        throw lastCreateError instanceof Error ? lastCreateError : new Error("Unable to create next series");
+      }
+      const metadataRoot = resolveSeriesMetadataRoot(metadataRootTemplate, nextSeriesId);
+      appendAuditLog(
+        "series_created_next_on_chain",
+        { seriesId: nextSeriesId, maxSupply, metadataRoot, txHash: created.txHash },
+        res.locals.adminActorEmail
+      );
+      updateSeriesSnapshotCache([...(seriesSnapshotCache.seriesIds ?? []), nextSeriesId]);
+      return res.status(201).json({
+        template,
+        seriesId: nextSeriesId,
+        maxSupply,
+        metadataRoot,
+        txHash: created.txHash
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message.toLowerCase().includes("rpc timeout") ||
+          error.message.toLowerCase().includes("timeout") ||
+          error.message.toLowerCase().includes("code=timeout"))
+      ) {
+        return res.status(503).json({
+          error: "Cannot reach blockchain RPC right now. Check RPC_URL and node health, then try again."
+        });
+      }
       return next(error);
     }
   });
@@ -848,6 +1123,8 @@ export function createAdminRoutes(services: Services): Router {
     const rejectedWebhooks = recentWebhookEvents.filter((item) => item.status === "rejected").length;
     const hasWebhookFailures = rejectedWebhooks > 0;
     const listingsCount = services.db.listings.size;
+    const sourceHealth = services.trends.getSourceHealth();
+    const failedSources = sourceHealth.filter((entry) => entry.consecutiveFailures > 0);
     const currentHourKey = now.slice(0, 13);
     const currentHourCount = services.db.mintCounters.perHour[currentHourKey] ?? 0;
     const mintedToday = services.db.mintCounters.perDay;
@@ -869,6 +1146,25 @@ export function createAdminRoutes(services: Services): Router {
     const recentAuditFailure = services.db.auditLogs.find((item) =>
       ["admin_login_failed", "partner_api_call"].includes(item.action)
     );
+    let nextSeriesIdPreview: number | undefined;
+    try {
+      const availableSeries = await getAvailableSeriesWithTimeout(40, 5000);
+      const existingIds = availableSeries.map((item) => item.seriesId);
+      const existingSet = new Set(existingIds);
+      const candidates = deriveSeriesCandidates(services.db.seriesLifecycleConfig.seriesIdTemplate, existingIds);
+      nextSeriesIdPreview =
+        candidates.find((id) => !existingSet.has(id)) ?? Math.max(1, ...existingIds, config.defaultSeriesId) + 1;
+    } catch {
+      nextSeriesIdPreview = undefined;
+    }
+    const latestSeriesCreateAudit = services.db.auditLogs.find(
+      (entry) =>
+        entry.action === "series_created_next_on_chain" || entry.action === "series_created_on_chain"
+    );
+    const lastSeriesCreateTxHash =
+      typeof latestSeriesCreateAudit?.details?.txHash === "string"
+        ? (latestSeriesCreateAudit.details.txHash as string)
+        : undefined;
     return res.json([
       {
         id: "api",
@@ -902,6 +1198,23 @@ export function createAdminRoutes(services: Services): Router {
           ? `${rejectedWebhooks} rejected webhook(s) in recent events`
           : `${recentWebhookEvents.length} recent webhook event(s) processed`,
         lastIncident: hasWebhookFailures ? `${rejectedWebhooks} rejected webhook(s) in recent events` : undefined
+      },
+      {
+        id: "trend-sources",
+        name: "Trend Sources",
+        status: failedSources.length > 0 ? "Degraded" : "Operational",
+        lastChecked: now,
+        detail:
+          sourceHealth.length === 0
+            ? "No trend source polls yet"
+            : `${sourceHealth.length} source(s) tracked, ${failedSources.length} degraded`,
+        lastIncident:
+          failedSources.length > 0
+            ? failedSources
+                .slice(0, 2)
+                .map((entry) => `${entry.source}: ${entry.lastError ?? "fetch failed"}`)
+                .join(" | ")
+            : undefined
       },
       {
         id: "indexer",
@@ -938,6 +1251,20 @@ export function createAdminRoutes(services: Services): Router {
         lastChecked: now,
         detail: `activeThemes=${services.trends.getThemes().filter((item) => item.active).length}, distinctTopics24h=${distinctTopics24h}, latestTrend=${newestTrendAt ? new Date(newestTrendAt).toLocaleTimeString() : "none"}`,
         lastIncident: distinctTopics24h <= 1 ? "Low theme/topic variation detected in last 24h" : undefined
+      },
+      {
+        id: "series-lifecycle",
+        name: "Series Lifecycle",
+        status: services.db.seriesLifecycleConfig.autoSeriesEnabled ? "Operational" : "Degraded",
+        lastChecked: now,
+        detail: `autoSeries=${services.db.seriesLifecycleConfig.autoSeriesEnabled ? "on" : "off"}, template=${services.db.seriesLifecycleConfig.seriesIdTemplate}, nextSeries=${nextSeriesIdPreview ?? "n/a"}`,
+        lastIncident: services.db.seriesLifecycleConfig.autoSeriesEnabled
+          ? undefined
+          : "Auto-series creation is disabled",
+        metadata: {
+          nextSeriesIdPreview,
+          lastSeriesCreateTxHash
+        }
       },
       {
         id: "auth",
@@ -1100,6 +1427,10 @@ export function createAdminRoutes(services: Services): Router {
     return res.json(services.db.pricingConfig);
   });
 
+  router.get("/series-lifecycle-config", (_req, res) => {
+    return res.json(services.db.seriesLifecycleConfig);
+  });
+
   router.post("/gateway-config", (req, res) => {
     const schema = z.object({
       provider: z.enum(["mock", "generic", "vellis", "wert", "nowpayments"]).optional(),
@@ -1146,6 +1477,25 @@ export function createAdminRoutes(services: Services): Router {
     }
     const updated = services.db.updatePricingConfig(parsed.data);
     appendAuditLog("pricing_config_updated", parsed.data, res.locals.adminActorEmail);
+    return res.json(updated);
+  });
+
+  router.post("/series-lifecycle-config", (req, res) => {
+    const schema = z.object({
+      autoSeriesEnabled: z.boolean().optional(),
+      seriesIdTemplate: z.string().min(1).max(120).optional(),
+      defaultSeriesMaxSupply: z.number().int().positive().optional(),
+      seriesMetadataRootTemplate: z.string().max(300).optional()
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    if (Object.keys(parsed.data).length === 0) {
+      return res.status(400).json({ error: "No series lifecycle fields provided" });
+    }
+    const updated = services.db.updateSeriesLifecycleConfig(parsed.data);
+    appendAuditLog("series_lifecycle_config_updated", parsed.data, res.locals.adminActorEmail);
     return res.json(updated);
   });
 

@@ -7,6 +7,20 @@ This guide explains how the marketplace automation behaves in production.
 - Create a new series on the NFT contract side first (contract/admin wallet).
 - Once the series exists on-chain, it appears in the admin series picker (via `/api/admin/series`).
 - The mint pipeline can then target that series ID for manual or scheduled minting.
+- You can also create series through admin API (`POST /api/admin/series`) when admin signer is configured.
+
+## 1.1) Automated series lifecycle
+
+- Enable in Admin Settings: **Auto-create next series when full/missing**.
+- Configuration options:
+  - `seriesIdTemplate` (supported: `next`, `start:<n>`, `list:a,b,c`, `range:x-y`)
+  - `defaultSeriesMaxSupply`
+  - `seriesMetadataRootTemplate` (supports `{seriesId}`)
+- Behavior:
+  - If selected/default series is unavailable or sold out, backend resolves next candidate based on template.
+  - If candidate does not exist, backend creates it on-chain and continues minting.
+- Requirement:
+  - Backend must have `ADMIN_PRIVATE_KEY` with `DEFAULT_ADMIN_ROLE`.
 
 ## 2) Trending topic volume (up to 10)
 
@@ -80,3 +94,12 @@ This guide explains how the marketplace automation behaves in production.
   - **Theme overrides** (`theme=price`)
   - **Series overrides** (`seriesId=price`)
   - **Listing overrides** (`listingId=price`)
+
+## 8) Trend intelligence sources
+
+- Active sources can include `twitter`, `reddit`, and optional `googletrends`.
+- Backend polls source adapters on configured interval and stores topic candidates.
+- If a source fails, backend falls back to mock candidates for resilience.
+- Source health telemetry is available via:
+  - `GET /api/admin/trend-source-health`
+  - `GET /api/admin/system-status` (Trend Sources component)

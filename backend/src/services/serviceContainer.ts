@@ -30,6 +30,7 @@ export interface CreateServicesOptions {
 export function createServices(db: InMemoryStore = store, options?: CreateServicesOptions): Services {
   const forceMock = options?.forceMock ?? false;
   const trends = new TrendIngestionService(db);
+  trends.registerDefaultAdapters();
   const prompts = new PromptBuilderService();
   const ai = forceMock ? new AiService(db, new MockAiProvider()) : new AiService(db);
   const ipfs = forceMock ? new IpfsService(new MockIpfsProvider()) : new IpfsService();

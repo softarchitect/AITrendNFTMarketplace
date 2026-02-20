@@ -11,6 +11,7 @@ const envSchema = z.object({
   RPC_URL: z.string().url().optional(),
   CONTRACT_ADDRESS: z.string().default(""),
   MINTER_PRIVATE_KEY: z.string().optional(),
+  ADMIN_PRIVATE_KEY: z.string().optional(),
   MINT_CAP_PER_DAY: z.coerce.number().default(50),
   MINT_CAP_PER_HOUR: z.coerce.number().default(10),
   DEFAULT_SERIES_ID: z.coerce.number().default(1),
@@ -55,7 +56,15 @@ const envSchema = z.object({
   PG_USER: z.string().default("postgres"),
   PG_PASSWORD: z.string().default("123456"),
   PG_DATABASE: z.string().default("trendmint"),
-  PG_SSL_MODE: z.enum(["disable", "require", "no-verify"]).default("disable")
+  PG_SSL_MODE: z.enum(["disable", "require", "no-verify"]).default("disable"),
+  TWITTER_BEARER_TOKEN: z.string().optional(),
+  REDDIT_CLIENT_ID: z.string().optional(),
+  REDDIT_CLIENT_SECRET: z.string().optional(),
+  REDDIT_USER_AGENT: z.string().default("TrendMint/1.0"),
+  GOOGLE_TRENDS_API_BASE_URL: z.string().url().optional(),
+  GOOGLE_TRENDS_API_KEY: z.string().optional(),
+  TREND_FETCH_LIMIT: z.coerce.number().default(10),
+  TREND_POLL_INTERVAL_MINUTES: z.coerce.number().default(15)
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -123,6 +132,7 @@ export const config = {
   rpcUrl: env.RPC_URL,
   contractAddress: env.CONTRACT_ADDRESS,
   minterPrivateKey: env.MINTER_PRIVATE_KEY,
+  adminPrivateKey: env.ADMIN_PRIVATE_KEY,
   mintCapPerDay: env.MINT_CAP_PER_DAY,
   mintCapPerHour: env.MINT_CAP_PER_HOUR,
   defaultSeriesId: env.DEFAULT_SERIES_ID,
@@ -181,6 +191,16 @@ export const config = {
       database: postgresDatabase,
       ssl: postgresSsl
     }
+  },
+  trends: {
+    twitterBearerToken: env.TWITTER_BEARER_TOKEN,
+    redditClientId: env.REDDIT_CLIENT_ID,
+    redditClientSecret: env.REDDIT_CLIENT_SECRET,
+    redditUserAgent: env.REDDIT_USER_AGENT,
+    googleTrendsApiBaseUrl: env.GOOGLE_TRENDS_API_BASE_URL,
+    googleTrendsApiKey: env.GOOGLE_TRENDS_API_KEY,
+    fetchLimit: env.TREND_FETCH_LIMIT,
+    pollIntervalMinutes: env.TREND_POLL_INTERVAL_MINUTES
   }
 };
 

@@ -136,6 +136,13 @@ export interface PricingConfigRecord {
   listingOverrides: Record<string, number>;
 }
 
+export interface SeriesLifecycleConfigRecord {
+  autoSeriesEnabled: boolean;
+  seriesIdTemplate: string;
+  defaultSeriesMaxSupply: number;
+  seriesMetadataRootTemplate: string;
+}
+
 export interface WebhookEventRecord {
   id: string;
   kind: "payment";
@@ -187,6 +194,7 @@ interface StoreSnapshot {
   adminControls: AdminControlsRecord;
   gatewaySettings: GatewaySettingsRecord;
   pricingConfig: PricingConfigRecord;
+  seriesLifecycleConfig: SeriesLifecycleConfigRecord;
   defaultEditionSize: number;
   editionOverrides: Array<[string, number]>;
   partnerApiKeys: PartnerApiKeyRecord[];
@@ -277,6 +285,12 @@ export class InMemoryStore {
     themeOverrides: {},
     seriesOverrides: {},
     listingOverrides: {}
+  };
+  public seriesLifecycleConfig: SeriesLifecycleConfigRecord = {
+    autoSeriesEnabled: false,
+    seriesIdTemplate: "next",
+    defaultSeriesMaxSupply: config.defaultEditionSize,
+    seriesMetadataRootTemplate: ""
   };
   public mintCounters: MintCounters = {
     date: new Date().toISOString().slice(0, 10),
@@ -457,6 +471,19 @@ export class InMemoryStore {
         })
       };
     }
+    if (snapshot.seriesLifecycleConfig) {
+      const template = snapshot.seriesLifecycleConfig.seriesIdTemplate?.trim() || "next";
+      const metadataTemplate = snapshot.seriesLifecycleConfig.seriesMetadataRootTemplate?.trim() || "";
+      this.seriesLifecycleConfig = {
+        autoSeriesEnabled: Boolean(snapshot.seriesLifecycleConfig.autoSeriesEnabled),
+        seriesIdTemplate: template,
+        defaultSeriesMaxSupply: Math.max(
+          1,
+          Number(snapshot.seriesLifecycleConfig.defaultSeriesMaxSupply ?? config.defaultEditionSize)
+        ),
+        seriesMetadataRootTemplate: metadataTemplate
+      };
+    }
     if (typeof snapshot.defaultEditionSize === "number") {
       this.defaultEditionSize = snapshot.defaultEditionSize;
     }
@@ -493,6 +520,7 @@ export class InMemoryStore {
       adminControls: this.adminControls,
       gatewaySettings: this.gatewaySettings,
       pricingConfig: this.pricingConfig,
+      seriesLifecycleConfig: this.seriesLifecycleConfig,
       defaultEditionSize: this.defaultEditionSize,
       editionOverrides: [...this.editionOverrides.entries()],
       partnerApiKeys: [...this.partnerApiKeys.values()],
@@ -1230,6 +1258,31 @@ export class InMemoryStore {
     return this.pricingConfig;
   }
 
+  updateSeriesLifecycleConfig(
+    patch: Partial<SeriesLifecycleConfigRecord>
+  ): SeriesLifecycleConfigRecord {
+    const nextSeriesIdTemplate =
+      patch.seriesIdTemplate !== undefined
+        ? patch.seriesIdTemplate.trim() || this.seriesLifecycleConfig.seriesIdTemplate
+        : this.seriesLifecycleConfig.seriesIdTemplate;
+    const nextSeriesMetadataRootTemplate =
+      patch.seriesMetadataRootTemplate !== undefined
+        ? patch.seriesMetadataRootTemplate.trim()
+        : this.seriesLifecycleConfig.seriesMetadataRootTemplate;
+    this.seriesLifecycleConfig = {
+      ...this.seriesLifecycleConfig,
+      ...patch,
+      seriesIdTemplate: nextSeriesIdTemplate,
+      defaultSeriesMaxSupply:
+        patch.defaultSeriesMaxSupply !== undefined
+          ? Math.max(1, Number(patch.defaultSeriesMaxSupply))
+          : this.seriesLifecycleConfig.defaultSeriesMaxSupply,
+      seriesMetadataRootTemplate: nextSeriesMetadataRootTemplate
+    };
+    this.touch();
+    return this.seriesLifecycleConfig;
+  }
+
   appendAuditLog(action: string, actor: string, details: Record<string, unknown>): AuditLogRecord {
     const entry: AuditLogRecord = {
       id: randomUUID(),
@@ -1482,13 +1535,15 @@ async function ensurePgPool(): Promise<Pool> {
       gateway_mode TEXT NOT NULL DEFAULT 'sandbox',
       webhook_verification_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       webhook_signature_header TEXT NOT NULL DEFAULT 'x-payment-signature',
-      pricing_config JSONB NOT NULL DEFAULT '{}'::jsonb
+      pricing_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      series_lifecycle_config JSONB NOT NULL DEFAULT '{}'::jsonb
     );
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gateway_provider TEXT NOT NULL DEFAULT 'mock';
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gateway_mode TEXT NOT NULL DEFAULT 'sandbox';
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS webhook_verification_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS webhook_signature_header TEXT NOT NULL DEFAULT 'x-payment-signature';
     ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pricing_config JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS series_lifecycle_config JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE TABLE IF NOT EXISTS edition_overrides (
       series_key TEXT PRIMARY KEY,
       size INTEGER NOT NULL
@@ -1875,6 +1930,29 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
           )
         }
       : undefined,
+    seriesLifecycleConfig: appSettingsRows.rows[0]
+      ? {
+          autoSeriesEnabled: Boolean(
+            (appSettingsRows.rows[0].series_lifecycle_config as { autoSeriesEnabled?: unknown } | undefined)
+              ?.autoSeriesEnabled ?? false
+          ),
+          seriesIdTemplate: String(
+            (appSettingsRows.rows[0].series_lifecycle_config as { seriesIdTemplate?: unknown } | undefined)
+              ?.seriesIdTemplate ?? "next"
+          ).trim() || "next",
+          defaultSeriesMaxSupply: Math.max(
+            1,
+            Number(
+              (appSettingsRows.rows[0].series_lifecycle_config as { defaultSeriesMaxSupply?: unknown } | undefined)
+                ?.defaultSeriesMaxSupply ?? config.defaultEditionSize
+            )
+          ),
+          seriesMetadataRootTemplate: String(
+            (appSettingsRows.rows[0].series_lifecycle_config as { seriesMetadataRootTemplate?: unknown } | undefined)
+              ?.seriesMetadataRootTemplate ?? ""
+          ).trim()
+        }
+      : undefined,
     defaultEditionSize: appSettingsRows.rows[0]
       ? Number(appSettingsRows.rows[0].default_edition_size)
       : undefined,
@@ -2176,16 +2254,18 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
         gateway_mode,
         webhook_verification_enabled,
         webhook_signature_header,
-        pricing_config
+       pricing_config,
+       series_lifecycle_config
        )
-       VALUES (1, $1, $2, $3, $4, $5, $6)`,
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7)`,
       [
         snapshot.defaultEditionSize,
         snapshot.gatewaySettings.provider,
         snapshot.gatewaySettings.mode,
         snapshot.gatewaySettings.webhookVerificationEnabled,
         snapshot.gatewaySettings.webhookSignatureHeader,
-        JSON.stringify(snapshot.pricingConfig)
+        JSON.stringify(snapshot.pricingConfig),
+        JSON.stringify(snapshot.seriesLifecycleConfig)
       ]
     );
 

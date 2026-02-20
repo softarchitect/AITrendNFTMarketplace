@@ -90,4 +90,13 @@ npm run test
 npm run build
 ```
 
+## Backend Automation Notes
+
+- Series lifecycle automation and trend-source intelligence are configured from backend/admin settings.
+- For on-chain auto-series creation, backend requires `ADMIN_PRIVATE_KEY` with contract `DEFAULT_ADMIN_ROLE`.
+- Trend integrations can be configured with:
+  - `TWITTER_BEARER_TOKEN`
+  - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`
+  - optional `GOOGLE_TRENDS_API_BASE_URL`, `GOOGLE_TRENDS_API_KEY`
+
 

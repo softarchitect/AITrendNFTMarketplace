@@ -8,7 +8,7 @@ import { CheckCircle2, AlertTriangle, XCircle, Wrench, Clock, RefreshCw } from "
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PageTransition } from "@/components/page-transition"
-import { getAuditLogs, getSystemStatus, getWebhookLogs } from "@/lib/api"
+import { getAuditLogs, getSystemStatus, getTrendSourceHealth, getWebhookLogs } from "@/lib/api"
 import type { SystemComponent } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -42,7 +42,12 @@ export default function AdminSystemStatusPage() {
       setRefreshing(true)
     }
     try {
-      const [data, webhooks, audits] = await Promise.all([getSystemStatus(), getWebhookLogs(), getAuditLogs()])
+      const [data, webhooks, audits, sourceHealth] = await Promise.all([
+        getSystemStatus(),
+        getWebhookLogs(),
+        getAuditLogs(),
+        getTrendSourceHealth()
+      ])
       setComponents(data)
       const webhookIncidents: Array<{ id: string; date: string; title: string; desc: string; severity: "major" | "minor" | "info" }> = webhooks.slice(0, 4).map((item) => ({
         id: item.id,
@@ -63,7 +68,18 @@ export default function AdminSystemStatusPage() {
               ? "info"
               : "minor"
       }))
-      const merged = [...webhookIncidents, ...auditIncidents]
+      const sourceIncidents: Array<{ id: string; date: string; title: string; desc: string; severity: "major" | "minor" | "info" }> =
+        sourceHealth
+          .filter((item) => item.consecutiveFailures > 0 || item.lastError)
+          .slice(0, 4)
+          .map((item) => ({
+            id: `source-${item.source}`,
+            date: new Date(item.lastAttemptAt ?? Date.now()).toLocaleDateString(),
+            title: `Trend source degraded: ${item.source}`,
+            desc: item.lastError ?? `${item.consecutiveFailures} consecutive failure(s)`,
+            severity: item.consecutiveFailures >= 3 ? "major" : "minor"
+          }))
+      const merged = [...webhookIncidents, ...auditIncidents, ...sourceIncidents]
       setIncidents(merged.slice(0, 8))
       setLastRefreshedAt(Date.now())
     } catch (error) {
@@ -153,6 +169,14 @@ export default function AdminSystemStatusPage() {
         <div className="space-y-3 mb-8">
           {components.map((comp, i) => {
             const Icon = statusIcons[comp.status] || CheckCircle2
+            const nextSeriesPreview =
+              comp.id === "series-lifecycle" && typeof comp.metadata?.nextSeriesIdPreview === "number"
+                ? comp.metadata.nextSeriesIdPreview
+                : undefined
+            const lastSeriesCreateTxHash =
+              comp.id === "series-lifecycle" && typeof comp.metadata?.lastSeriesCreateTxHash === "string"
+                ? comp.metadata.lastSeriesCreateTxHash
+                : undefined
             return (
               <motion.div key={comp.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
                 <Card className="border-border">
@@ -168,6 +192,16 @@ export default function AdminSystemStatusPage() {
                           <Clock className="h-3 w-3" />
                           Last checked: {new Date(comp.lastChecked).toLocaleTimeString()}
                         </p>
+                        {comp.id === "series-lifecycle" && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+                              Next Series: {nextSeriesPreview ?? "n/a"}
+                            </span>
+                            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+                              Last Create Tx: {lastSeriesCreateTxHash ? `${lastSeriesCreateTxHash.slice(0, 10)}...` : "none"}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">

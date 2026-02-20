@@ -9,11 +9,15 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageTransition } from "@/components/page-transition"
 import {
+  createNextAdminSeries,
   getGatewayConfig,
   getGatewayHealth,
   getMintControls,
   getPricingConfig,
+  getSeriesLifecycleConfig,
   getWebhookLogs,
+  previewNextAdminSeries,
+  updateSeriesLifecycleConfig,
   updateGatewayConfig,
   updateMintControls,
   updatePricingConfig
@@ -43,6 +47,16 @@ export default function AdminSettingsPage() {
   const [themePriceOverridesText, setThemePriceOverridesText] = useState("")
   const [seriesPriceOverridesText, setSeriesPriceOverridesText] = useState("")
   const [listingPriceOverridesText, setListingPriceOverridesText] = useState("")
+  const [autoSeriesEnabled, setAutoSeriesEnabled] = useState(false)
+  const [seriesIdTemplate, setSeriesIdTemplate] = useState("next")
+  const [defaultSeriesMaxSupply, setDefaultSeriesMaxSupply] = useState("25")
+  const [seriesMetadataRootTemplate, setSeriesMetadataRootTemplate] = useState("")
+  const [nextSeriesPreview, setNextSeriesPreview] = useState<number | null>(null)
+  const [previewingNextSeries, setPreviewingNextSeries] = useState(false)
+  const [creatingNextSeries, setCreatingNextSeries] = useState(false)
+  const [lastCreatedSeriesTx, setLastCreatedSeriesTx] = useState<string | null>(null)
+  const [seriesChainReachable, setSeriesChainReachable] = useState<boolean>(true)
+  const [seriesChainWarning, setSeriesChainWarning] = useState<string | null>(null)
   const [pipelineEnabled, setPipelineEnabled] = useState(true)
   const [scheduleEnabled, setScheduleEnabled] = useState(true)
   const [webhookLogs, setWebhookLogs] = useState<Array<{ id: string; status: string; createdAt: string; externalRef?: string; reason?: string }>>([])
@@ -87,9 +101,51 @@ export default function AdminSettingsPage() {
     }
   }
 
+  async function handlePreviewNextSeries(templateOverride?: string) {
+    setPreviewingNextSeries(true)
+    try {
+      const response = await previewNextAdminSeries({
+        seriesIdTemplate: (templateOverride ?? seriesIdTemplate).trim()
+      })
+      setNextSeriesPreview(response.nextSeriesId)
+      setSeriesChainReachable(response.chainReachable !== false)
+      setSeriesChainWarning(response.warning ?? null)
+    } catch {
+      toast.error("Failed to preview next series ID")
+      setSeriesChainReachable(false)
+      setSeriesChainWarning("RPC preview failed. Please verify RPC_URL and node health.")
+    } finally {
+      setPreviewingNextSeries(false)
+    }
+  }
+
+  async function handleCreateNextSeries() {
+    const parsedDefaultSeriesMaxSupply = Number(defaultSeriesMaxSupply)
+    if (!Number.isFinite(parsedDefaultSeriesMaxSupply) || parsedDefaultSeriesMaxSupply < 1) {
+      toast.error("Default series max supply must be a positive number.")
+      return
+    }
+    setCreatingNextSeries(true)
+    try {
+      const result = await createNextAdminSeries({
+        seriesIdTemplate: seriesIdTemplate.trim() || "next",
+        defaultSeriesMaxSupply: parsedDefaultSeriesMaxSupply,
+        seriesMetadataRootTemplate: seriesMetadataRootTemplate.trim()
+      })
+      setLastCreatedSeriesTx(result.txHash)
+      void handlePreviewNextSeries()
+      toast.success(`Series ${result.seriesId} created on-chain`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create next series"
+      toast.error(message)
+    } finally {
+      setCreatingNextSeries(false)
+    }
+  }
+
   useEffect(() => {
-    Promise.all([getMintControls(), getPricingConfig(), refreshRuntimeStatus()])
-      .then(([controls, pricing]) => {
+    Promise.all([getMintControls(), getPricingConfig(), getSeriesLifecycleConfig(), refreshRuntimeStatus()])
+      .then(([controls, pricing, lifecycle]) => {
         setDailyCap(String(controls.dailyCap))
         setHourlyCap(String(controls.hourlyCap))
         setTrendTopicLimit(String(controls.trendTopicLimit ?? 3))
@@ -113,6 +169,11 @@ export default function AdminSettingsPage() {
             .map(([key, value]) => `${key}=${value}`)
             .join("\n")
         )
+        setAutoSeriesEnabled(Boolean(lifecycle.autoSeriesEnabled))
+        setSeriesIdTemplate(lifecycle.seriesIdTemplate || "next")
+        setDefaultSeriesMaxSupply(String(lifecycle.defaultSeriesMaxSupply ?? 25))
+        setSeriesMetadataRootTemplate(lifecycle.seriesMetadataRootTemplate ?? "")
+        void handlePreviewNextSeries(lifecycle.seriesIdTemplate || "next")
         setPipelineEnabled(controls.pipelineEnabled)
         setScheduleEnabled(controls.scheduleEnabled)
       })
@@ -131,6 +192,7 @@ export default function AdminSettingsPage() {
     const parsedDailyMinimumTarget = Number(dailyMinimumTarget)
     const parsedBasePriceUsd = Number(basePriceUsd)
     const parsedTokenStepUsd = Number(tokenStepUsd)
+    const parsedDefaultSeriesMaxSupply = Number(defaultSeriesMaxSupply)
     if (!Number.isFinite(parsedDailyCap) || parsedDailyCap < 1) {
       toast.error("Daily cap must be a positive number.")
       return
@@ -169,6 +231,10 @@ export default function AdminSettingsPage() {
     }
     if (!Number.isFinite(parsedTokenStepUsd) || parsedTokenStepUsd < 0) {
       toast.error("Token step must be zero or higher.")
+      return
+    }
+    if (!Number.isFinite(parsedDefaultSeriesMaxSupply) || parsedDefaultSeriesMaxSupply < 1) {
+      toast.error("Default series max supply must be a positive number.")
       return
     }
 
@@ -227,6 +293,12 @@ export default function AdminSettingsPage() {
           themeOverrides,
           seriesOverrides,
           listingOverrides
+        }),
+        updateSeriesLifecycleConfig({
+          autoSeriesEnabled,
+          seriesIdTemplate: seriesIdTemplate.trim() || "next",
+          defaultSeriesMaxSupply: parsedDefaultSeriesMaxSupply,
+          seriesMetadataRootTemplate: seriesMetadataRootTemplate.trim()
         }),
         updateGatewayConfig({
           provider: gatewayProvider,
@@ -328,6 +400,87 @@ export default function AdminSettingsPage() {
                   <span className="text-xs text-muted-foreground">mode: {gatewayMode}</span>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">{runtimeAdapterNote()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-foreground">
+              <AlertTriangle className="h-5 w-5 text-[hsl(var(--warning))]" /> Series Lifecycle Automation
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Configure automatic on-chain series creation and rollover rules
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <span className="text-sm text-foreground">Auto-create next series when full/missing</span>
+              <Switch checked={autoSeriesEnabled} onCheckedChange={setAutoSeriesEnabled} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-foreground">Series ID template</Label>
+                <Input
+                  value={seriesIdTemplate}
+                  onChange={(e) => setSeriesIdTemplate(e.target.value)}
+                  placeholder="next | start:100 | list:101,102 | range:200-250"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Default max supply for new series</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={defaultSeriesMaxSupply}
+                  onChange={(e) => setDefaultSeriesMaxSupply(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label className="text-foreground">Series metadata root template</Label>
+                <Input
+                  value={seriesMetadataRootTemplate}
+                  onChange={(e) => setSeriesMetadataRootTemplate(e.target.value)}
+                  placeholder="ipfs://base/{seriesId}/"
+                />
+              </div>
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="gap-2 bg-transparent"
+                  onClick={() => void handlePreviewNextSeries()}
+                  disabled={previewingNextSeries || creatingNextSeries}
+                >
+                  {previewingNextSeries ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Preview Next Series ID
+                </Button>
+                <Button
+                  className="gap-2"
+                  onClick={() => void handleCreateNextSeries()}
+                  disabled={creatingNextSeries || saving}
+                >
+                  {creatingNextSeries ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Create Next Series Now
+                </Button>
+                {nextSeriesPreview !== null && (
+                  <span className="text-xs text-muted-foreground">Next series candidate: #{nextSeriesPreview}</span>
+                )}
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-xs ${
+                    seriesChainReachable
+                      ? "border-[hsl(var(--success))]/40 text-[hsl(var(--success))]"
+                      : "border-destructive/50 text-destructive"
+                  }`}
+                >
+                  RPC: {seriesChainReachable ? "reachable" : "unreachable"}
+                </span>
+                {lastCreatedSeriesTx && (
+                  <span className="text-xs text-muted-foreground font-mono">tx: {lastCreatedSeriesTx}</span>
+                )}
+                {seriesChainWarning && (
+                  <span className="text-xs text-muted-foreground">{seriesChainWarning}</span>
+                )}
               </div>
             </div>
           </CardContent>

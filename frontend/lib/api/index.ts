@@ -194,6 +194,21 @@ interface PricingConfigDto {
   listingOverrides: Record<string, number>
 }
 
+interface SeriesLifecycleConfigDto {
+  autoSeriesEnabled: boolean
+  seriesIdTemplate: string
+  defaultSeriesMaxSupply: number
+  seriesMetadataRootTemplate: string
+}
+
+interface TrendSourceHealthDto {
+  source: string
+  lastAttemptAt?: string
+  lastSuccessAt?: string
+  consecutiveFailures: number
+  lastError?: string
+}
+
 interface MarketplaceGatewayInfoDto {
   provider: string
   mode: "sandbox" | "live"
@@ -871,6 +886,69 @@ export async function updatePricingConfig(
     method: "POST",
     body: patch,
   })
+}
+
+export async function getSeriesLifecycleConfig(): Promise<SeriesLifecycleConfigDto> {
+  return apiRequest<SeriesLifecycleConfigDto>("/api/admin/series-lifecycle-config")
+}
+
+export async function updateSeriesLifecycleConfig(
+  patch: Partial<SeriesLifecycleConfigDto>
+): Promise<SeriesLifecycleConfigDto> {
+  return apiRequest<SeriesLifecycleConfigDto>("/api/admin/series-lifecycle-config", {
+    method: "POST",
+    body: patch,
+  })
+}
+
+export async function createAdminSeries(payload: {
+  seriesId: number
+  maxSupply: number
+  metadataRoot?: string
+}): Promise<{ seriesId: number; maxSupply: number; metadataRoot: string; txHash: string }> {
+  return apiRequest("/api/admin/series", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function previewNextAdminSeries(payload?: {
+  seriesIdTemplate?: string
+}): Promise<{
+  mode: "mock" | "chain"
+  template: string
+  nextSeriesId: number
+  existsOnChain: boolean
+  chainReachable?: boolean
+  warning?: string
+}> {
+  const params = new URLSearchParams()
+  if (payload?.seriesIdTemplate?.trim()) {
+    params.set("seriesIdTemplate", payload.seriesIdTemplate.trim())
+  }
+  const query = params.toString()
+  return apiRequest(`/api/admin/series/preview-next${query ? `?${query}` : ""}`)
+}
+
+export async function createNextAdminSeries(payload?: {
+  seriesIdTemplate?: string
+  defaultSeriesMaxSupply?: number
+  seriesMetadataRootTemplate?: string
+}): Promise<{
+  template: string
+  seriesId: number
+  maxSupply: number
+  metadataRoot: string
+  txHash: string
+}> {
+  return apiRequest("/api/admin/series/create-next", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function getTrendSourceHealth(): Promise<TrendSourceHealthDto[]> {
+  return apiRequest<TrendSourceHealthDto[]>("/api/admin/trend-source-health")
 }
 
 export async function getGatewayHealth(): Promise<GatewayHealthDto> {

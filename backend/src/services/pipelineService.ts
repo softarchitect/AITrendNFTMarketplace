@@ -8,6 +8,8 @@ import { PromptBuilderService } from "./promptBuilderService";
 import { TrendIngestionService } from "./trendIngestionService";
 
 export class PipelineService {
+  private readonly pendingSeriesCreates = new Map<number, Promise<void>>();
+
   constructor(
     private readonly db: InMemoryStore,
     private readonly trends: TrendIngestionService,
@@ -30,15 +32,118 @@ export class PipelineService {
     return undefined;
   }
 
+  private buildSeriesMetadataRoot(seriesId: number): string {
+    const template = this.db.seriesLifecycleConfig.seriesMetadataRootTemplate?.trim();
+    if (!template) return "";
+    return template.replace(/\{seriesId\}/gi, String(seriesId));
+  }
+
+  private deriveTemplateSeriesCandidates(currentSeriesIds: number[]): number[] {
+    const template = (this.db.seriesLifecycleConfig.seriesIdTemplate || "next").trim().toLowerCase();
+    const sorted = [...currentSeriesIds].sort((a, b) => a - b);
+    const maxCurrent = sorted.length > 0 ? sorted[sorted.length - 1] : 0;
+    const next = Math.max(1, maxCurrent + 1);
+
+    if (template === "next") {
+      return [next];
+    }
+    if (template.startsWith("start:")) {
+      const start = Number(template.slice("start:".length));
+      if (Number.isFinite(start) && start > 0) {
+        return [Math.max(start, next)];
+      }
+      return [next];
+    }
+    if (template.startsWith("list:")) {
+      const listValues = template
+        .slice("list:".length)
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .map((value) => Math.trunc(value));
+      return [...new Set([...listValues, next])];
+    }
+    if (template.startsWith("range:")) {
+      const [startRaw, endRaw] = template
+        .slice("range:".length)
+        .split("-")
+        .map((item) => Number(item.trim()));
+      if (Number.isFinite(startRaw) && Number.isFinite(endRaw) && startRaw > 0 && endRaw >= startRaw) {
+        const range: number[] = [];
+        for (let id = Math.trunc(startRaw); id <= Math.trunc(endRaw); id += 1) {
+          range.push(id);
+          if (range.length >= 300) break;
+        }
+        return [...new Set([...range, next])];
+      }
+      return [next];
+    }
+    return [next];
+  }
+
+  private async createSeriesWithLock(seriesId: number): Promise<void> {
+    const existingPromise = this.pendingSeriesCreates.get(seriesId);
+    if (existingPromise) {
+      await existingPromise;
+      return;
+    }
+    const createPromise = (async () => {
+      await this.minter.createSeries({
+        seriesId,
+        maxSupply: this.db.seriesLifecycleConfig.defaultSeriesMaxSupply,
+        metadataRoot: this.buildSeriesMetadataRoot(seriesId)
+      });
+    })();
+    this.pendingSeriesCreates.set(seriesId, createPromise);
+    try {
+      await createPromise;
+    } finally {
+      this.pendingSeriesCreates.delete(seriesId);
+    }
+  }
+
+  private async resolveSeriesIdForMint(inputSeriesId?: number): Promise<number> {
+    const preferredSeriesId = inputSeriesId ?? config.defaultSeriesId;
+    try {
+      await this.minter.ensureSeriesMintable(preferredSeriesId);
+      return preferredSeriesId;
+    } catch (error) {
+      if (!this.db.seriesLifecycleConfig.autoSeriesEnabled) {
+        throw error;
+      }
+    }
+
+    const availableSeries = await this.minter.getAvailableSeries(300);
+    const openSeriesIds = new Set(
+      availableSeries
+        .filter((item) => Number.isFinite(item.remaining) && item.remaining > 0)
+        .map((item) => item.seriesId)
+    );
+    const currentSeriesIds = availableSeries.map((item) => item.seriesId);
+    const candidates = this.deriveTemplateSeriesCandidates(currentSeriesIds);
+
+    for (const candidate of candidates) {
+      if (openSeriesIds.has(candidate)) {
+        return candidate;
+      }
+      await this.createSeriesWithLock(candidate);
+      await this.minter.ensureSeriesMintable(candidate);
+      return candidate;
+    }
+
+    const fallbackId = Math.max(1, ...currentSeriesIds, config.defaultSeriesId) + 1;
+    await this.createSeriesWithLock(fallbackId);
+    await this.minter.ensureSeriesMintable(fallbackId);
+    return fallbackId;
+  }
+
   async runAutomatedMintCycle(input?: {
     recipient?: string;
     seriesId?: number;
     limit?: number;
     themeOverride?: string;
   }) {
-    const seriesId = input?.seriesId ?? config.defaultSeriesId;
-    // Preflight chain constraints first so we fail fast before AI/IPFS work.
-    await this.minter.ensureSeriesMintable(seriesId);
+    const seriesId = await this.resolveSeriesIdForMint(input?.seriesId);
 
     const canMint = this.trends.canMintNow();
     if (!canMint.ok) {
@@ -55,21 +160,21 @@ export class PipelineService {
           pinned: true
         })
       : undefined;
-    const topic =
+    const resolvedTopic =
       topicCandidates ??
-      (() => {
-        const candidates = this.trends.ingestSimulatedTrends(resolvedLimit);
+      (await (async () => {
+        const candidates = await this.trends.ingestTrends(resolvedLimit);
         return candidates.find((item) => !item.pinned) ?? candidates[0];
-      })();
-    if (!topic) {
+      })());
+    if (!resolvedTopic) {
       throw new Error("No trend topic available");
     }
 
-    const prompt = this.prompts.buildPrompt(topic);
-    const job = this.db.createJob(topic.id, prompt);
-    const asset = await this.ai.generateForJob(job, topic.topic);
+    const prompt = this.prompts.buildPrompt(resolvedTopic);
+    const job = this.db.createJob(resolvedTopic.id, prompt);
+    const asset = await this.ai.generateForJob(job, resolvedTopic.topic);
     const configuredEditionSize =
-      this.resolveEditionOverride(seriesId, topic.topic) ?? this.db.defaultEditionSize;
+      this.resolveEditionOverride(seriesId, resolvedTopic.topic) ?? this.db.defaultEditionSize;
     const pinned = await this.ipfs.pinAssetAndMetadata(asset, configuredEditionSize);
 
     const to = input?.recipient ?? "0x000000000000000000000000000000000000dEaD";
@@ -89,14 +194,14 @@ export class PipelineService {
     const tokenId = minted.tokenId ?? this.db.listings.size + 1;
     const activeThemes = this.trends.getThemes().filter((theme) => theme.active);
     const matchedTheme = activeThemes.find(
-      (theme) => theme.name.toLowerCase() === topic.topic.toLowerCase()
+      (theme) => theme.name.toLowerCase() === resolvedTopic.topic.toLowerCase()
     );
     const fallbackTheme =
       activeThemes.find((theme) => theme.type === "Trending")?.name ?? "AI Art";
     const listingThemes = matchedTheme
       ? [matchedTheme.name]
-      : topic.pinned
-        ? [topic.topic]
+      : resolvedTopic.pinned
+        ? [resolvedTopic.topic]
         : [fallbackTheme];
     const seriesInfo = await this.minter.getSeriesInfo(seriesId);
     const editionSize =
@@ -125,7 +230,7 @@ export class PipelineService {
     });
 
     return {
-      topic,
+      topic: resolvedTopic,
       prompt,
       job,
       asset,

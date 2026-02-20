@@ -152,6 +152,7 @@ export interface SystemComponent {
   detail?: string
   lastIncident?: string
   lastChecked: string
+  metadata?: Record<string, unknown>
 }
 
 // ─── Drop ─────────────────────────────────────────────────────

@@ -5,8 +5,11 @@ import { InMemoryStore } from "../store/inMemoryStore";
 
 export class MinterService {
   private readonly contract?: Contract;
+  private readonly adminContract?: Contract;
   private readonly tokenMintedTopic: string;
   private readonly isMock: boolean;
+  private readonly minterAddress?: string;
+  private readonly adminAddress?: string;
 
   constructor(
     private readonly db: InMemoryStore,
@@ -17,9 +20,20 @@ export class MinterService {
     this.isMock =
       modeOverride === "mock" ? true : modeOverride === "chain" ? false : !(config.rpcUrl && config.contractAddress && config.minterPrivateKey);
     if (!this.isMock) {
-      const provider = new JsonRpcProvider(config.rpcUrl);
-      const wallet = new Wallet(config.minterPrivateKey!, provider);
-      this.contract = new Contract(config.contractAddress, TREND_MINT_721_ABI, wallet);
+      // Use static network to avoid repeated network detection flakiness on some RPC providers.
+      const provider = new JsonRpcProvider(
+        config.rpcUrl,
+        { chainId: config.chainId, name: "sepolia" },
+        { staticNetwork: true }
+      );
+      const minterWallet = new Wallet(config.minterPrivateKey!, provider);
+      this.minterAddress = minterWallet.address.toLowerCase();
+      this.contract = new Contract(config.contractAddress, TREND_MINT_721_ABI, minterWallet);
+      if (config.adminPrivateKey) {
+        const adminWallet = new Wallet(config.adminPrivateKey, provider);
+        this.adminAddress = adminWallet.address.toLowerCase();
+        this.adminContract = new Contract(config.contractAddress, TREND_MINT_721_ABI, adminWallet);
+      }
     }
   }
 
@@ -69,6 +83,38 @@ export class MinterService {
       }
     } catch (error) {
       throw this.toFriendlyChainError(error, seriesId);
+    }
+  }
+
+  async createSeries(input: {
+    seriesId: number;
+    maxSupply: number;
+    metadataRoot?: string;
+  }): Promise<{ txHash: string }> {
+    if (this.isMock) {
+      return { txHash: `0xmockcreateseries${input.seriesId.toString(16).padStart(8, "0")}` };
+    }
+    if (!this.adminContract) {
+      throw new Error("Admin signer not configured. Set ADMIN_PRIVATE_KEY to enable auto-series creation.");
+    }
+    if (!this.adminAddress) {
+      throw new Error("Admin signer address is unavailable.");
+    }
+    try {
+      const adminRole = await this.adminContract.DEFAULT_ADMIN_ROLE();
+      const hasRole = await this.adminContract.hasRole(adminRole, this.adminAddress);
+      if (!hasRole) {
+        throw new Error("Configured admin signer does not have DEFAULT_ADMIN_ROLE on contract.");
+      }
+      const tx = await this.adminContract.createSeries(
+        input.seriesId,
+        input.maxSupply,
+        input.metadataRoot ?? ""
+      );
+      await tx.wait();
+      return { txHash: tx.hash };
+    } catch (error) {
+      throw this.toFriendlySeriesCreationError(error, input.seriesId);
     }
   }
 
@@ -191,6 +237,30 @@ export class MinterService {
         }
         return new Error("On-chain mint failed");
     }
+  }
+
+  private toFriendlySeriesCreationError(error: unknown, seriesId: number): Error {
+    const selector = this.extractSelector(error);
+    const message =
+      error instanceof Error ? error.message : typeof error === "string" ? error : "Series creation failed";
+    // TrendMint721.SeriesAlreadyExists(uint256)
+    if (
+      selector === "0xf9b68be0" ||
+      message.toLowerCase().includes("seriesalreadyexists") ||
+      message.toLowerCase().includes("already exists")
+    ) {
+      return new Error(`Series ${seriesId} already exists.`);
+    }
+    if (message.toLowerCase().includes("invalidmaxsupply")) {
+      return new Error("Series maxSupply must be greater than zero.");
+    }
+    if (message.toLowerCase().includes("default_admin_role") || message.toLowerCase().includes("accesscontrol")) {
+      return new Error("Admin signer is not authorized to create series on this contract.");
+    }
+    if (error instanceof Error && error.message) {
+      return new Error(error.message);
+    }
+    return new Error("On-chain series creation failed");
   }
 
   private extractSelector(error: unknown): string | undefined {

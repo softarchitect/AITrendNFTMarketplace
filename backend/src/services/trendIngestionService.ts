@@ -1,6 +1,14 @@
 import { config } from "../config";
 import { AdminThemeRecord, AdminThemeType, InMemoryStore } from "../store/inMemoryStore";
 import { TrendTopic } from "../types";
+import {
+  GoogleTrendsAdapter,
+  MockTrendAdapter,
+  RedditTrendAdapter,
+  TrendCandidate,
+  TrendSourceAdapter,
+  TwitterTrendAdapter
+} from "./trends/adapters";
 
 const DEFAULT_SIMULATED_TOPICS = [
   "UAE smart city innovation",
@@ -11,7 +19,30 @@ const DEFAULT_SIMULATED_TOPICS = [
 ];
 
 export class TrendIngestionService {
+  private readonly adapters = new Map<string, TrendSourceAdapter>();
+  private readonly mockAdapters = new Map<string, MockTrendAdapter>();
+  private readonly sourceHealth = new Map<
+    string,
+    {
+      source: string;
+      lastAttemptAt?: string;
+      lastSuccessAt?: string;
+      consecutiveFailures: number;
+      lastError?: string;
+    }
+  >();
+
   constructor(private readonly db: InMemoryStore) {}
+
+  registerAdapter(adapter: TrendSourceAdapter): void {
+    this.adapters.set(adapter.source.toLowerCase(), adapter);
+  }
+
+  registerDefaultAdapters(): void {
+    this.registerAdapter(new TwitterTrendAdapter());
+    this.registerAdapter(new RedditTrendAdapter());
+    this.registerAdapter(new GoogleTrendsAdapter());
+  }
 
   setSources(sources: string[]): string[] {
     return this.db.replaceTrendSources(sources);
@@ -31,6 +62,16 @@ export class TrendIngestionService {
     rateLimitMode: "Standard" | "Aggressive" | "Conservative";
   }> {
     return this.db.getTrendSourceSettings();
+  }
+
+  getSourceHealth(): Array<{
+    source: string;
+    lastAttemptAt?: string;
+    lastSuccessAt?: string;
+    consecutiveFailures: number;
+    lastError?: string;
+  }> {
+    return [...this.sourceHealth.values()].sort((a, b) => a.source.localeCompare(b.source));
   }
 
   setPinnedThemes(themes: string[]): string[] {
@@ -114,6 +155,124 @@ export class TrendIngestionService {
     this.db.mintCounters.perDay += 1;
     this.db.mintCounters.perHour[hour] = (this.db.mintCounters.perHour[hour] ?? 0) + 1;
     this.db.touch();
+  }
+
+  private getMockAdapter(source: string): MockTrendAdapter {
+    const normalized = source.toLowerCase();
+    const existing = this.mockAdapters.get(normalized);
+    if (existing) return existing;
+    const adapter = new MockTrendAdapter(
+      normalized === "twitter" || normalized === "instagram" || normalized === "reddit" || normalized === "googletrends"
+        ? normalized
+        : "manual"
+    );
+    this.mockAdapters.set(normalized, adapter);
+    return adapter;
+  }
+
+  private markSourceAttempt(source: string): void {
+    const current = this.sourceHealth.get(source) ?? { source, consecutiveFailures: 0 };
+    this.sourceHealth.set(source, {
+      ...current,
+      source,
+      lastAttemptAt: new Date().toISOString()
+    });
+  }
+
+  private markSourceSuccess(source: string): void {
+    const current = this.sourceHealth.get(source) ?? { source, consecutiveFailures: 0 };
+    this.sourceHealth.set(source, {
+      ...current,
+      source,
+      lastSuccessAt: new Date().toISOString(),
+      consecutiveFailures: 0,
+      lastError: undefined
+    });
+  }
+
+  private markSourceFailure(source: string, error: string): void {
+    const current = this.sourceHealth.get(source) ?? { source, consecutiveFailures: 0 };
+    this.sourceHealth.set(source, {
+      ...current,
+      source,
+      consecutiveFailures: current.consecutiveFailures + 1,
+      lastError: error
+    });
+  }
+
+  private dedupeCandidates(candidates: TrendCandidate[]): TrendCandidate[] {
+    const merged = new Map<string, TrendCandidate>();
+    for (const item of candidates) {
+      const key = item.topic.trim().toLowerCase();
+      if (!key) continue;
+      const current = merged.get(key);
+      if (!current || item.score > current.score) {
+        merged.set(key, item);
+      }
+    }
+    return [...merged.values()].sort((a, b) => b.score - a.score);
+  }
+
+  async ingestLiveTrends(limit = config.trends.fetchLimit): Promise<TrendTopic[]> {
+    const output: TrendTopic[] = [];
+    for (const theme of this.db.pinnedThemes) {
+      output.push(
+        this.db.createTrend({
+          source: "manual",
+          topic: theme,
+          score: 100,
+          pinned: true
+        })
+      );
+    }
+
+    const sourceSettings = this.db
+      .getTrendSourceSettings()
+      .filter((entry) => entry.status === "Active")
+      .map((entry) => entry.source.toLowerCase());
+
+    const fetchLimit = Math.max(1, Math.min(50, limit));
+    const allCandidates: TrendCandidate[] = [];
+    for (const source of sourceSettings) {
+      this.markSourceAttempt(source);
+      const adapter = this.adapters.get(source);
+      const fallbackAdapter = this.getMockAdapter(source);
+      try {
+        const adapterCandidates = adapter
+          ? await adapter.fetchTrends(fetchLimit)
+          : await fallbackAdapter.fetchTrends(fetchLimit);
+        const candidates = adapterCandidates.length > 0 ? adapterCandidates : await fallbackAdapter.fetchTrends(fetchLimit);
+        this.markSourceSuccess(source);
+        allCandidates.push(...candidates);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "source fetch failed";
+        this.markSourceFailure(source, errorMessage);
+        const fallbackCandidates = await fallbackAdapter.fetchTrends(fetchLimit);
+        allCandidates.push(...fallbackCandidates);
+      }
+    }
+
+    const distinctCandidates = this.dedupeCandidates(allCandidates).slice(0, fetchLimit);
+    for (const candidate of distinctCandidates) {
+      output.push(
+        this.db.createTrend({
+          source: candidate.source,
+          topic: candidate.topic,
+          score: candidate.score,
+          pinned: false
+        })
+      );
+    }
+
+    if (output.length === 0) {
+      return this.ingestSimulatedTrends(fetchLimit);
+    }
+    return output;
+  }
+
+  async ingestTrends(limit = config.trends.fetchLimit): Promise<TrendTopic[]> {
+    const fetchLimit = Math.max(1, Math.min(50, limit));
+    return this.ingestLiveTrends(fetchLimit);
   }
 
   ingestSimulatedTrends(limit = 3): TrendTopic[] {

@@ -27,9 +27,15 @@ describe("TrendMint Milestone 2 backend", () => {
 
   it("blocks bulk transfer before payment is confirmed", async () => {
     const { app } = setup();
+    const keyRes = await request(app).post("/api/admin/api-keys").send({
+      label: "test-partner",
+      permissions: ["BulkPurchase", "Transfer"]
+    });
+    const partnerApiKey = keyRes.body.key as string;
 
     const createPayment = await request(app)
       .post("/api/partner/bulk-purchase")
+      .set("Authorization", `Bearer ${partnerApiKey}`)
       .set("x-idempotency-key", "idem-key-0001")
       .send({
         buyerWallet: "0xbuyer",
@@ -40,18 +46,26 @@ describe("TrendMint Milestone 2 backend", () => {
 
     expect(createPayment.status).toBe(201);
 
-    const blocked = await request(app).post("/api/partner/bulk-transfer").send({
-      paymentExternalRef: createPayment.body.externalRef,
-      fromWallet: "0xfrom",
-      toWallet: "0xto",
-      tokenIds: [1]
-    });
+    const blocked = await request(app)
+      .post("/api/partner/bulk-transfer")
+      .set("Authorization", `Bearer ${partnerApiKey}`)
+      .send({
+        paymentExternalRef: createPayment.body.externalRef,
+        fromWallet: "0xfrom",
+        toWallet: "0xto",
+        tokenIds: [1]
+      });
 
     expect(blocked.status).toBe(409);
   });
 
   it("allows transfer after payment webhook confirmation", async () => {
     const { app } = setup();
+    const keyRes = await request(app).post("/api/admin/api-keys").send({
+      label: "test-partner",
+      permissions: ["BulkPurchase", "Transfer"]
+    });
+    const partnerApiKey = keyRes.body.key as string;
 
     await request(app)
       .post("/api/admin/run-cycle")
@@ -59,6 +73,7 @@ describe("TrendMint Milestone 2 backend", () => {
 
     const createPayment = await request(app)
       .post("/api/partner/bulk-purchase")
+      .set("Authorization", `Bearer ${partnerApiKey}`)
       .set("x-idempotency-key", "idem-key-0002")
       .send({
         buyerWallet: "0xbuyer",
@@ -72,12 +87,15 @@ describe("TrendMint Milestone 2 backend", () => {
       status: "confirmed"
     });
 
-    const transfer = await request(app).post("/api/partner/bulk-transfer").send({
-      paymentExternalRef: createPayment.body.externalRef,
-      fromWallet: "0xfrom",
-      toWallet: "0xto",
-      tokenIds: [1]
-    });
+    const transfer = await request(app)
+      .post("/api/partner/bulk-transfer")
+      .set("Authorization", `Bearer ${partnerApiKey}`)
+      .send({
+        paymentExternalRef: createPayment.body.externalRef,
+        fromWallet: "0xfrom",
+        toWallet: "0xto",
+        tokenIds: [1]
+      });
 
     expect(transfer.status).toBe(200);
     expect(transfer.body.transferred).toBe(1);
