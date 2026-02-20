@@ -294,7 +294,7 @@ function mapListingToNft(listing: ListingDto): NFT {
     tokenId: listing.tokenId,
     chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 11155111),
     contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "",
-    title: `TrendMint #${listing.tokenId}`,
+    title: `Affordable NFT #${listing.tokenId}`,
     description: `AI-generated NFT indexed from ${listing.tokenUri}`,
     imageUrl: listing.imageUrl || createFallbackImage(listing.tokenId),
     promptSummary: `Generated from ${listingThemes.join(", ")}`,
@@ -310,11 +310,11 @@ function mapListingToNft(listing: ListingDto): NFT {
     currency: "USD",
     ipfsCid: listing.tokenUri.replace("ipfs://", ""),
     traits: [
-      { trait_type: "Source", value: "TrendMint" },
+      { trait_type: "Source", value: "Affordable NFT" },
       { trait_type: "Token", value: String(listing.tokenId) },
     ],
     status: mapListingStatus(listing.status),
-    creator: "TrendMint",
+    creator: "Affordable NFT",
     collectionSlug: "trendmint-default",
   }
 }
@@ -504,7 +504,7 @@ export async function getCollections(): Promise<Collection[]> {
   })
   const defaultCollection: Collection = {
     slug: "trendmint-default",
-    name: "TrendMint Default",
+    name: "Affordable NFT Default",
     description: "All minted NFTs in the marketplace",
     imageUrl: nfts[0]?.imageUrl ?? "/placeholder.svg?height=320&width=320&query=collection",
     nftCount: nfts.length,
@@ -660,7 +660,7 @@ export async function getUserActivity(walletAddress?: string): Promise<ActivityE
     return {
       id: `purchase-${receipt.id}`,
       type: "Purchase",
-      nftTitle: listing ? `TrendMint #${listing.tokenId}` : `TrendMint Purchase ${receipt.id.slice(0, 8)}`,
+      nftTitle: listing ? `Affordable NFT #${listing.tokenId}` : `Affordable NFT Purchase ${receipt.id.slice(0, 8)}`,
       nftImageUrl: listing?.imageUrl || createFallbackImage(tokenId || 1),
       amount: undefined,
       timestamp: receipt.createdAt,
@@ -672,7 +672,7 @@ export async function getUserActivity(walletAddress?: string): Promise<ActivityE
     .map((listing) => ({
       id: `ownership-${listing.id}`,
       type: listing.status === "listed" ? "Listing" : listing.status === "transferred" ? "Transfer" : "Mint",
-      nftTitle: `TrendMint #${listing.tokenId}`,
+      nftTitle: `Affordable NFT #${listing.tokenId}`,
       nftImageUrl: listing.imageUrl || createFallbackImage(listing.tokenId),
       amount: Number((0.015 + (listing.tokenId % 5) * 0.005).toFixed(3)),
       timestamp: listing.updatedAt,

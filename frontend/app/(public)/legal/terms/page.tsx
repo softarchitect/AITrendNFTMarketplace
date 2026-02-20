@@ -10,11 +10,11 @@ export default function TermsPage() {
         <div className="mt-8 space-y-6 text-sm text-muted-foreground leading-relaxed">
           <section>
             <h2 className="text-lg font-semibold text-foreground">1. Acceptance of Terms</h2>
-            <p>By accessing or using the TrendMint platform, you agree to be bound by these Terms of Service. If you do not agree, do not use our services.</p>
+            <p>By accessing or using the Affordable NFT platform, you agree to be bound by these Terms of Service. If you do not agree, do not use our services.</p>
           </section>
           <section>
             <h2 className="text-lg font-semibold text-foreground">2. Description of Service</h2>
-            <p>TrendMint provides an AI-powered NFT marketplace that automatically generates digital artwork from trending topics and mints them as ERC-721 tokens on the Ethereum blockchain.</p>
+            <p>Affordable NFT provides an AI-powered NFT marketplace that automatically generates digital artwork from trending topics and mints them as ERC-721 tokens on the Ethereum blockchain.</p>
           </section>
           <section>
             <h2 className="text-lg font-semibold text-foreground">3. User Accounts</h2>
@@ -26,11 +26,11 @@ export default function TermsPage() {
           </section>
           <section>
             <h2 className="text-lg font-semibold text-foreground">5. Intellectual Property</h2>
-            <p>AI-generated artwork is owned by the purchaser of the NFT. TrendMint retains the right to display artwork for promotional purposes. The underlying AI models and platform technology remain the property of TrendMint.</p>
+            <p>AI-generated artwork is owned by the purchaser of the NFT. Affordable NFT retains the right to display artwork for promotional purposes. The underlying AI models and platform technology remain the property of Affordable NFT.</p>
           </section>
           <section>
             <h2 className="text-lg font-semibold text-foreground">6. Limitation of Liability</h2>
-            <p>TrendMint is provided &ldquo;as is&rdquo; without warranties. We are not liable for losses arising from blockchain transactions, wallet compromise, or market value fluctuations.</p>
+            <p>Affordable NFT is provided &ldquo;as is&rdquo; without warranties. We are not liable for losses arising from blockchain transactions, wallet compromise, or market value fluctuations.</p>
           </section>
         </div>
       </div>

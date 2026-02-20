@@ -214,12 +214,12 @@ export const mockAdminOverview: AdminOverview = {
 
 // ─── FAQ Data ─────────────────────────────────────────────────
 export const mockFAQs = [
-  { q: "What is TrendMint?", a: "TrendMint is an AI-powered NFT marketplace that automatically detects trending topics across social media, generates unique digital artwork using AI, and mints them as ERC-721 NFTs on Ethereum." },
+  { q: "What is Affordable NFT?", a: "Affordable NFT is an AI-powered NFT marketplace that automatically detects trending topics across social media, generates unique digital artwork using AI, and mints them as ERC-721 NFTs on Ethereum." },
   { q: "How are the artworks created?", a: "Our automated pipeline monitors trending conversations on Twitter/X, Reddit, Instagram, and aggregator feeds. When a significant trend is detected, our AI generates unique artwork inspired by that trend, which is then minted on-chain and listed for sale." },
   { q: "What are editions?", a: "Each NFT can have multiple copies (editions). For example, a popular piece might have 50 editions. Each edition is individually numbered and tracked on the blockchain." },
   { q: "How do I purchase an NFT?", a: "Connect your wallet (MetaMask or WalletConnect), browse the marketplace, select an NFT, and click Buy. You can pay with fiat currency through our payment gateway or directly with crypto." },
-  { q: "What blockchain are the NFTs on?", a: "All TrendMint NFTs are ERC-721 tokens minted on the Ethereum mainnet. Each has a unique token ID and is backed by metadata stored on IPFS." },
+  { q: "What blockchain are the NFTs on?", a: "All Affordable NFT NFTs are ERC-721 tokens minted on the Ethereum mainnet. Each has a unique token ID and is backed by metadata stored on IPFS." },
   { q: "Do I need KYC verification?", a: "KYC verification is required for fiat purchases and certain transaction thresholds. You can complete KYC through our streamlined verification process in your account settings." },
   { q: "What is 2FA and do I need it?", a: "Two-factor authentication (2FA) adds an extra layer of security to your account. While not mandatory, we strongly recommend enabling it to protect your assets." },
-  { q: "Can I resell my NFTs?", a: "Yes! Once you own an NFT, you can relist it on the TrendMint marketplace or transfer it to any Ethereum-compatible wallet." },
+  { q: "Can I resell my NFTs?", a: "Yes! Once you own an NFT, you can relist it on the Affordable NFT marketplace or transfer it to any Ethereum-compatible wallet." },
 ]

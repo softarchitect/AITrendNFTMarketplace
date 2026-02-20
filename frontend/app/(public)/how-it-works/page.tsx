@@ -27,7 +27,7 @@ export default function HowItWorksPage() {
     <PageTransition>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:py-12">
         <div className="text-center mb-16">
-          <h1 className="text-3xl font-bold text-foreground sm:text-4xl">How TrendMint Works</h1>
+          <h1 className="text-3xl font-bold text-foreground sm:text-4xl">How Affordable NFT Works</h1>
           <p className="mt-3 text-lg text-muted-foreground max-w-2xl mx-auto">
             From trending topic to collectible NFT in minutes. Our automated pipeline handles everything.
           </p>
@@ -61,7 +61,7 @@ export default function HowItWorksPage() {
 
         {/* Features */}
         <div className="mb-20">
-          <h2 className="text-2xl font-bold text-foreground text-center mb-10">Why TrendMint</h2>
+          <h2 className="text-2xl font-bold text-foreground text-center mb-10">Why Affordable NFT</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {features.map((f, i) => (
               <motion.div

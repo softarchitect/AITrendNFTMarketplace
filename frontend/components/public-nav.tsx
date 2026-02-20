@@ -60,7 +60,7 @@ export function PublicNav() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Sparkles className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-lg font-bold text-foreground">TrendMint</span>
+          <span className="text-lg font-bold text-foreground">Affordable NFT</span>
         </Link>
 
         {/* Desktop Nav */}

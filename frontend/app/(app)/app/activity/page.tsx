@@ -181,7 +181,7 @@ export default function ActivityPage() {
             {search || typeFilter !== "all"
               ? "Try changing your filters."
               : address
-                ? "Your activity will appear here as you interact with TrendMint."
+                ? "Your activity will appear here as you interact with Affordable NFT."
                 : "Connect your wallet to load account activity."}
           </p>
         </div>

@@ -22,7 +22,7 @@ export default function PartnersLandingPage() {
           <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary mb-4">
             Partner API
           </span>
-          <h1 className="text-3xl font-bold text-foreground sm:text-4xl">Build with TrendMint</h1>
+          <h1 className="text-3xl font-bold text-foreground sm:text-4xl">Build with Affordable NFT</h1>
           <p className="mt-3 text-lg text-muted-foreground leading-relaxed">
             Integrate our NFT marketplace into your platform. Automate purchases, transfers, and relisting through our RESTful API.
           </p>

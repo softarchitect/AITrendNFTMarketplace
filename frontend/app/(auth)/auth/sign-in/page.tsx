@@ -112,7 +112,7 @@ export default function SignInPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-foreground">Welcome back</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Sign in to your TrendMint account
+            Sign in to your Affordable NFT account
           </CardDescription>
         </CardHeader>
         <CardContent>

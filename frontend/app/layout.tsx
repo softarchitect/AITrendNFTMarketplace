@@ -10,8 +10,8 @@ const geistSans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" })
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
 
 export const metadata: Metadata = {
-  title: "TrendMint | AI-Powered NFT Marketplace",
-  description: "Discover unique AI-generated NFTs minted from trending topics. The future of digital art collection.",
+  title: "Affordable NFT | AI-Powered NFT Marketplace",
+  description: "Discover affordable AI-generated NFTs minted from trending topics. The future of digital art collection.",
 }
 
 export const viewport: Viewport = {

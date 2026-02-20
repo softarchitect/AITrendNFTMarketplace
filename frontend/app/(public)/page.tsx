@@ -57,7 +57,7 @@ export default function HomePage() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mt-6 text-pretty text-lg text-muted-foreground leading-relaxed"
             >
-              TrendMint monitors the pulse of the internet, transforms trending moments into unique
+              Affordable NFT monitors the pulse of the internet, transforms trending moments into unique
               AI-generated artwork, and mints them as limited-edition NFTs on Ethereum.
             </motion.p>
 

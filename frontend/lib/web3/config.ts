@@ -23,8 +23,8 @@ const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 const connectors = [
   metaMask({
     dappMetadata: {
-      name: "TrendMint",
-      url: "https://trendmint.local"
+      name: "Affordable NFT",
+      url: "https://affordablenft.com"
     }
   }),
   ...(walletConnectProjectId
@@ -32,9 +32,9 @@ const connectors = [
         walletConnect({
           projectId: walletConnectProjectId,
           metadata: {
-            name: "TrendMint",
-            description: "AI Trend NFT Marketplace",
-            url: "https://trendmint.local",
+            name: "Affordable NFT",
+            description: "Affordable AI-powered NFT marketplace",
+            url: "https://affordablenft.com",
             icons: []
           },
           showQrModal: true

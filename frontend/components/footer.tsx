@@ -19,7 +19,7 @@ export function Footer() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
               <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
-            <span className="text-sm font-bold text-foreground">TrendMint</span>
+            <span className="text-sm font-bold text-foreground">Affordable NFT</span>
           </div>
 
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2" aria-label="Footer navigation">
@@ -37,7 +37,7 @@ export function Footer() {
 
         <div className="mt-8 border-t border-border pt-6 text-center">
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} TrendMint. AI-powered NFT generation. All rights reserved.
+            &copy; {new Date().getFullYear()} Affordable NFT. AI-powered NFT generation. All rights reserved.
           </p>
         </div>
       </div>

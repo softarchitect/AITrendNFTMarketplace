@@ -103,7 +103,7 @@ export default function ReceiptsPage() {
 
   function handleDownloadInvoice(receipt: Receipt) {
     const invoiceText = [
-      "TrendMint Receipt Invoice",
+      "Affordable NFT Receipt Invoice",
       "------------------------",
       `Receipt ID: ${receipt.id}`,
       `Listing ID: ${receipt.listingId}`,
@@ -119,7 +119,7 @@ export default function ReceiptsPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `trendmint-invoice-${receipt.id}.txt`
+    link.download = `affordable-nft-invoice-${receipt.id}.txt`
     document.body.appendChild(link)
     link.click()
     link.remove()

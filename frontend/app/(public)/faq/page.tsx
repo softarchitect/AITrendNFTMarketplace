@@ -9,7 +9,7 @@ export default function FAQPage() {
     <PageTransition>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
         <h1 className="text-3xl font-bold text-foreground mb-2">FAQ</h1>
-        <p className="text-muted-foreground mb-8">Everything you need to know about TrendMint.</p>
+        <p className="text-muted-foreground mb-8">Everything you need to know about Affordable NFT.</p>
 
         <Accordion type="single" collapsible className="space-y-2">
           {mockFAQs.map((faq, i) => (

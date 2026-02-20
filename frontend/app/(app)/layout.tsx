@@ -141,7 +141,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
                 <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
               </div>
-              <span className="font-bold text-foreground">TrendMint</span>
+              <span className="font-bold text-foreground">Affordable NFT</span>
             </Link>
           </div>
           <div className="flex items-center gap-2">

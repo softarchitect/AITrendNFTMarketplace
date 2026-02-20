@@ -62,13 +62,13 @@ export default function MintingQueuePage() {
   function buildOptimisticQueueItem(result: RunMintCycleResult): NFT {
     const nowIso = new Date().toISOString()
     const tokenId = result.listing?.tokenId ?? result.mint?.tokenId ?? 0
-    const source = result.topic?.source ? String(result.topic.source) : "TrendMint"
+    const source = result.topic?.source ? String(result.topic.source) : "Affordable NFT"
     return {
       id: result.listing?.id ?? `pending-${Date.now()}`,
       tokenId,
       chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 11155111),
       contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "",
-      title: tokenId > 0 ? `TrendMint #${tokenId}` : "TrendMint (Processing)",
+      title: tokenId > 0 ? `Affordable NFT #${tokenId}` : "Affordable NFT (Processing)",
       description: "Mint pipeline started by admin.",
       imageUrl: "/placeholder.svg?height=512&width=512&query=trendmint%20processing",
       promptSummary: result.topic?.topic ?? "New trend mint in progress",
@@ -88,7 +88,7 @@ export default function MintingQueuePage() {
         { trait_type: "State", value: "Processing" }
       ],
       status: "Minting",
-      creator: "TrendMint",
+      creator: "Affordable NFT",
       collectionSlug: "trendmint-default"
     }
   }
@@ -106,7 +106,7 @@ export default function MintingQueuePage() {
       tokenId: 0,
       chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 11155111),
       contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "",
-      title: "TrendMint (Processing)",
+      title: "Affordable NFT (Processing)",
       description: "Mint pipeline started by admin.",
       imageUrl: "/placeholder.svg?height=512&width=512&query=trendmint%20processing",
       promptSummary: `Mint request queued (${seriesLabel}, limit ${request.limit}${request.themeOverride ? `, theme ${request.themeOverride}` : ""})`,
@@ -126,7 +126,7 @@ export default function MintingQueuePage() {
         { trait_type: "State", value: "Processing" }
       ],
       status: "Minting",
-      creator: request.recipient ? `Recipient ${request.recipient.slice(0, 6)}...` : "TrendMint",
+      creator: request.recipient ? `Recipient ${request.recipient.slice(0, 6)}...` : "Affordable NFT",
       collectionSlug: "trendmint-default"
     }
   }

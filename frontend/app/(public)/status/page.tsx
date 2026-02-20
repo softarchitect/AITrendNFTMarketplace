@@ -21,7 +21,7 @@ export default function StatusPage() {
     <PageTransition>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
         <h1 className="text-3xl font-bold text-foreground mb-2">System Status</h1>
-        <p className="text-muted-foreground mb-8">Current status of TrendMint infrastructure.</p>
+        <p className="text-muted-foreground mb-8">Current status of Affordable NFT infrastructure.</p>
 
         {/* Overall status */}
         <div className={`rounded-2xl border p-6 mb-8 ${allOperational ? "border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5" : "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/5"}`}>

@@ -180,7 +180,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
             <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="font-bold text-foreground">TrendMint</span>
+          <span className="font-bold text-foreground">Affordable NFT</span>
           <span className="ml-auto rounded-md bg-destructive/10 px-1.5 py-0.5 text-[9px] font-bold text-destructive uppercase">Admin</span>
         </div>
         <ScrollArea className="flex-1 p-3">
