@@ -39,8 +39,41 @@ export function createMarketplaceRoutes(services: Services): Router {
   function normalizeImageUrlForHttps(imageUrl: string): string {
     const value = imageUrl.trim();
     if (!value) return value;
-    if (!value.startsWith("http://")) return value;
-    return `https://${value.slice("http://".length)}`;
+    if (!shouldForceHttpsImageUrls) return value;
+
+    const configuredBase = config.publicBaseUrl.trim();
+    let configuredUrl: URL | undefined;
+    try {
+      configuredUrl = new URL(configuredBase);
+    } catch {
+      configuredUrl = undefined;
+    }
+
+    try {
+      const currentUrl = new URL(value);
+      if (!configuredUrl) {
+        return currentUrl.protocol === "http:"
+          ? `https://${value.slice("http://".length)}`
+          : value;
+      }
+
+      // For generated media, pin host/protocol to the configured public base.
+      if (currentUrl.pathname.startsWith("/generated/")) {
+        return `${configuredUrl.origin}${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`;
+      }
+
+      // Keep non-generated URLs, but enforce HTTPS when possible.
+      if (currentUrl.protocol === "http:") {
+        currentUrl.protocol = "https:";
+        return currentUrl.toString();
+      }
+      return currentUrl.toString();
+    } catch {
+      if (value.startsWith("/generated/") && configuredUrl) {
+        return `${configuredUrl.origin}${value}`;
+      }
+      return value.startsWith("http://") ? `https://${value.slice("http://".length)}` : value;
+    }
   }
 
   async function fetchMetadataImage(tokenUri: string): Promise<string | undefined> {
