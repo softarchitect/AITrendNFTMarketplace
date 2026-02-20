@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
+import { config } from "../config";
 import { Services } from "../services/serviceContainer";
 import { ListingRecord } from "../types";
 
 export function createMarketplaceRoutes(services: Services): Router {
   const router = Router();
   const ipfsGateways = ["https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/"];
+  const shouldForceHttpsImageUrls = config.nodeEnv === "production";
 
   function roundUsd(value: number): number {
     return Number(value.toFixed(2));
@@ -34,6 +36,13 @@ export function createMarketplaceRoutes(services: Services): Router {
     return value;
   }
 
+  function normalizeImageUrlForHttps(imageUrl: string): string {
+    const value = imageUrl.trim();
+    if (!value) return value;
+    if (!value.startsWith("http://")) return value;
+    return `https://${value.slice("http://".length)}`;
+  }
+
   async function fetchMetadataImage(tokenUri: string): Promise<string | undefined> {
     const metadataUrl = resolveIpfsUri(tokenUri);
     if (!/^https?:\/\//i.test(metadataUrl)) {
@@ -59,7 +68,15 @@ export function createMarketplaceRoutes(services: Services): Router {
   }
 
   async function enrichListingImage(listing: ListingRecord): Promise<ListingRecord> {
-    if (listing.imageUrl) return listing;
+    if (listing.imageUrl) {
+      const normalized = shouldForceHttpsImageUrls
+        ? normalizeImageUrlForHttps(listing.imageUrl)
+        : listing.imageUrl;
+      if (normalized !== listing.imageUrl) {
+        return services.db.updateListing(listing.id, { imageUrl: normalized });
+      }
+      return listing;
+    }
     const imageUrl = await fetchMetadataImage(listing.tokenUri);
     if (!imageUrl) return listing;
     return services.db.updateListing(listing.id, { imageUrl });
