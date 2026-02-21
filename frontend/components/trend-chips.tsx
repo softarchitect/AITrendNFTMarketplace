@@ -1,10 +1,12 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { TrendingUp } from "lucide-react"
+import { getMarketplaceThemePool } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-const trendingTopics = [
+const fallbackTopics = [
   "AI Sentience Debate",
   "Quantum Computing",
   "Solar Maximum",
@@ -18,11 +20,25 @@ const trendingTopics = [
 ]
 
 export function TrendChips({ className }: { className?: string }) {
+  const [topics, setTopics] = useState<string[]>(fallbackTopics)
+
+  useEffect(() => {
+    getMarketplaceThemePool()
+      .then((pool) => {
+        if (pool.themes.length > 0) {
+          setTopics(pool.themes)
+        }
+      })
+      .catch(() => {
+        // Keep fallback topics when API is unavailable.
+      })
+  }, [])
+
   return (
     <div className={cn("flex flex-wrap items-center justify-center gap-2", className)}>
       <TrendingUp className="h-4 w-4 text-[hsl(var(--success))]" />
       <span className="text-sm font-medium text-muted-foreground mr-1">Trending:</span>
-      {trendingTopics.map((topic, i) => (
+      {topics.map((topic, i) => (
         <motion.span
           key={topic}
           initial={{ opacity: 0, y: 10 }}
@@ -38,9 +54,23 @@ export function TrendChips({ className }: { className?: string }) {
 }
 
 export function FloatingTrendChips({ className }: { className?: string }) {
+  const [topics, setTopics] = useState<string[]>(fallbackTopics)
+
+  useEffect(() => {
+    getMarketplaceThemePool()
+      .then((pool) => {
+        if (pool.themes.length > 0) {
+          setTopics(pool.themes)
+        }
+      })
+      .catch(() => {
+        // Keep fallback topics when API is unavailable.
+      })
+  }, [])
+
   return (
     <div className={cn("relative", className)} aria-hidden="true">
-      {trendingTopics.slice(0, 6).map((topic, i) => (
+      {topics.slice(0, 6).map((topic, i) => (
         <motion.div
           key={topic}
           className="absolute rounded-full border border-border/50 bg-card/80 backdrop-blur-sm px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm"

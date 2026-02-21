@@ -275,6 +275,68 @@ export class TrendIngestionService {
     return this.ingestLiveTrends(fetchLimit);
   }
 
+  getRecentTopics(limit = 10): TrendTopic[] {
+    const max = Math.max(1, Math.min(50, limit));
+    const ordered = [...this.db.trends.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const deduped: TrendTopic[] = [];
+    const seen = new Set<string>();
+    for (const item of ordered) {
+      const key = item.topic.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      deduped.push(item);
+      seen.add(key);
+      if (deduped.length >= max) break;
+    }
+    return deduped;
+  }
+
+  syncTrendingThemesFromTopics(topics: TrendTopic[], limit: number): AdminThemeRecord[] {
+    const maxThemes = Math.max(1, Math.min(10, limit));
+    const selectedNames = Array.from(
+      new Set(
+        topics
+          .filter((item) => !item.pinned)
+          .map((item) => item.topic.trim())
+          .filter((name) => name.length > 0)
+      )
+    ).slice(0, maxThemes);
+    if (selectedNames.length === 0) {
+      return this.getThemes();
+    }
+
+    const existingThemes = this.db.listThemes();
+    const existingTrending = existingThemes.filter((theme) => theme.type === "Trending");
+    const byName = new Map(existingThemes.map((theme) => [theme.name.toLowerCase(), theme]));
+
+    selectedNames.forEach((name, index) => {
+      const existing = byName.get(name.toLowerCase());
+      if (existing) {
+        this.db.updateTheme(existing.id, {
+          active: true,
+          priority: index + 1,
+          type: "Trending",
+          description: existing.description || "Auto-synced from trend sources"
+        });
+        return;
+      }
+      this.db.createTheme({
+        name,
+        type: "Trending",
+        description: "Auto-synced from trend sources",
+        active: true,
+        priority: index + 1
+      });
+    });
+
+    for (const theme of existingTrending) {
+      if (!selectedNames.some((name) => name.toLowerCase() === theme.name.toLowerCase())) {
+        this.db.updateTheme(theme.id, { active: false });
+      }
+    }
+
+    return this.getThemes();
+  }
+
   ingestSimulatedTrends(limit = 3): TrendTopic[] {
     const output: TrendTopic[] = [];
 

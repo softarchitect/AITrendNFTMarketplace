@@ -1134,6 +1134,7 @@ export function createAdminRoutes(services: Services): Router {
     const remainingDailyCap = Math.max(0, dailyCap - mintedToday);
     const remainingHourlyCap = Math.max(0, hourlyCap - currentHourCount);
     const nextIntervalMinutes = Math.max(1, services.db.adminControls.autoMintIntervalMinutes);
+    const trendRefreshHours = Math.max(1, services.db.adminControls.trendRefreshIntervalHours ?? 24);
     const recentTrends = [...services.db.trends.values()]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 50);
@@ -1249,7 +1250,7 @@ export function createAdminRoutes(services: Services): Router {
         name: "Theme Rotation",
         status: distinctTopics24h <= 1 ? "Degraded" : "Operational",
         lastChecked: now,
-        detail: `activeThemes=${services.trends.getThemes().filter((item) => item.active).length}, distinctTopics24h=${distinctTopics24h}, latestTrend=${newestTrendAt ? new Date(newestTrendAt).toLocaleTimeString() : "none"}`,
+        detail: `activeThemes=${services.trends.getThemes().filter((item) => item.active).length}, themePool=${services.db.adminControls.trendTopicLimit}, refresh=${trendRefreshHours}h, distinctTopics24h=${distinctTopics24h}, latestTrend=${newestTrendAt ? new Date(newestTrendAt).toLocaleTimeString() : "none"}`,
         lastIncident: distinctTopics24h <= 1 ? "Low theme/topic variation detected in last 24h" : undefined
       },
       {
@@ -1288,6 +1289,7 @@ export function createAdminRoutes(services: Services): Router {
       pipelineEnabled: z.boolean().optional(),
       scheduleEnabled: z.boolean().optional(),
       trendTopicLimit: z.number().int().min(1).max(10).optional(),
+      trendRefreshIntervalHours: z.number().int().min(1).max(168).optional(),
       autoMintIntervalMinutes: z.number().int().positive().optional(),
       autoMintBatchSize: z.number().int().min(1).max(10).optional(),
       dailyMinimumTarget: z.number().int().min(0).optional()

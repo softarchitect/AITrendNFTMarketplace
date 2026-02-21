@@ -95,16 +95,26 @@ function startAutoMintScheduler(services: Services): void {
 
 function startTrendPollingScheduler(services: Services): void {
   let running = false;
-  const intervalMs = Math.max(1, config.trends.pollIntervalMinutes) * 60_000;
+  let lastRunAt = 0;
+  const tickMs = 60_000;
   setInterval(() => {
     if (running) return;
+    const refreshHours = Math.max(1, Math.min(168, services.db.adminControls.trendRefreshIntervalHours ?? 24));
+    const intervalMs = refreshHours * 60 * 60 * 1000;
+    if (Date.now() - lastRunAt < intervalMs) {
+      return;
+    }
     running = true;
+    lastRunAt = Date.now();
     void services.trends
-      .ingestTrends(config.trends.fetchLimit)
+      .ingestTrends(services.db.adminControls.trendTopicLimit || config.trends.fetchLimit)
       .then((items) => {
+        services.trends.syncTrendingThemesFromTopics(items, services.db.adminControls.trendTopicLimit);
         services.db.appendAuditLog("trend_poll_completed", "system", {
           count: items.length,
-          sources: services.trends.getSources()
+          sources: services.trends.getSources(),
+          themePoolSize: services.db.adminControls.trendTopicLimit,
+          refreshHours
         });
       })
       .catch((error) => {
@@ -116,8 +126,8 @@ function startTrendPollingScheduler(services: Services): void {
       .finally(() => {
         running = false;
       });
-  }, intervalMs);
-  logger.info({ intervalMs }, "Trend polling scheduler started");
+  }, tickMs);
+  logger.info({ tickMs }, "Trend polling scheduler started");
 }
 
 async function bootstrap() {

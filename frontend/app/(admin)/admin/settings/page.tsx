@@ -39,6 +39,7 @@ export default function AdminSettingsPage() {
   const [dailyCap, setDailyCap] = useState("50")
   const [hourlyCap, setHourlyCap] = useState("10")
   const [trendTopicLimit, setTrendTopicLimit] = useState("3")
+  const [trendRefreshIntervalHours, setTrendRefreshIntervalHours] = useState("24")
   const [autoMintIntervalMinutes, setAutoMintIntervalMinutes] = useState("15")
   const [autoMintBatchSize, setAutoMintBatchSize] = useState("1")
   const [dailyMinimumTarget, setDailyMinimumTarget] = useState("0")
@@ -149,6 +150,7 @@ export default function AdminSettingsPage() {
         setDailyCap(String(controls.dailyCap))
         setHourlyCap(String(controls.hourlyCap))
         setTrendTopicLimit(String(controls.trendTopicLimit ?? 3))
+        setTrendRefreshIntervalHours(String(controls.trendRefreshIntervalHours ?? 24))
         setAutoMintIntervalMinutes(String(controls.autoMintIntervalMinutes ?? 15))
         setAutoMintBatchSize(String(controls.autoMintBatchSize ?? 1))
         setDailyMinimumTarget(String(controls.dailyMinimumTarget ?? 0))
@@ -187,6 +189,7 @@ export default function AdminSettingsPage() {
     const parsedDailyCap = Number(dailyCap)
     const parsedHourlyCap = Number(hourlyCap)
     const parsedTrendTopicLimit = Number(trendTopicLimit)
+    const parsedTrendRefreshIntervalHours = Number(trendRefreshIntervalHours)
     const parsedAutoMintIntervalMinutes = Number(autoMintIntervalMinutes)
     const parsedAutoMintBatchSize = Number(autoMintBatchSize)
     const parsedDailyMinimumTarget = Number(dailyMinimumTarget)
@@ -206,7 +209,15 @@ export default function AdminSettingsPage() {
       return
     }
     if (!Number.isFinite(parsedTrendTopicLimit) || parsedTrendTopicLimit < 1 || parsedTrendTopicLimit > 10) {
-      toast.error("Trend topic limit must be between 1 and 10.")
+      toast.error("Theme pool size must be between 1 and 10.")
+      return
+    }
+    if (
+      !Number.isFinite(parsedTrendRefreshIntervalHours) ||
+      parsedTrendRefreshIntervalHours < 1 ||
+      parsedTrendRefreshIntervalHours > 168
+    ) {
+      toast.error("Trend refresh interval must be between 1 and 168 hours.")
       return
     }
     if (!Number.isFinite(parsedAutoMintIntervalMinutes) || parsedAutoMintIntervalMinutes < 1) {
@@ -281,6 +292,7 @@ export default function AdminSettingsPage() {
           dailyCap: parsedDailyCap,
           hourlyCap: parsedHourlyCap,
           trendTopicLimit: parsedTrendTopicLimit,
+          trendRefreshIntervalHours: parsedTrendRefreshIntervalHours,
           autoMintIntervalMinutes: parsedAutoMintIntervalMinutes,
           autoMintBatchSize: parsedAutoMintBatchSize,
           dailyMinimumTarget: parsedDailyMinimumTarget,
@@ -610,8 +622,18 @@ export default function AdminSettingsPage() {
                 <Input type="number" value={hourlyCap} onChange={(e) => setHourlyCap(e.target.value)} min={1} />
               </div>
               <div className="space-y-2">
-                <Label className="text-foreground">Topic limit per cycle (1-10)</Label>
+                <Label className="text-foreground">Theme pool size per refresh (1-10)</Label>
                 <Input type="number" value={trendTopicLimit} onChange={(e) => setTrendTopicLimit(e.target.value)} min={1} max={10} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Trend refresh interval (hours)</Label>
+                <Input
+                  type="number"
+                  value={trendRefreshIntervalHours}
+                  onChange={(e) => setTrendRefreshIntervalHours(e.target.value)}
+                  min={1}
+                  max={168}
+                />
               </div>
               <div className="space-y-2">
                 <Label className="text-foreground">Auto-mint interval (minutes)</Label>

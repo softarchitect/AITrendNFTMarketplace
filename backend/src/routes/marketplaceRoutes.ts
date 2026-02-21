@@ -128,6 +128,33 @@ export function createMarketplaceRoutes(services: Services): Router {
     });
   });
 
+  router.get("/theme-pool", (_req, res) => {
+    const maxThemes = Math.max(1, Math.min(10, services.db.adminControls.trendTopicLimit ?? 3));
+    const activeThemes = services.trends
+      .getThemes()
+      .filter((theme) => theme.active)
+      .sort((a, b) => a.priority - b.priority)
+      .map((theme) => theme.name)
+      .slice(0, maxThemes);
+    const listingThemes = Array.from(
+      new Set(
+        [...services.db.listings.values()]
+          .flatMap((listing) => listing.themes)
+          .map((theme) => theme.trim())
+          .filter((theme) => theme.length > 0)
+      )
+    );
+    const themes = activeThemes.length > 0 ? activeThemes : listingThemes.slice(0, maxThemes);
+    const latestTrendAt = [...services.db.trends.values()]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.createdAt;
+    return res.json({
+      themes,
+      maxThemes,
+      refreshIntervalHours: Math.max(1, Math.min(168, services.db.adminControls.trendRefreshIntervalHours ?? 24)),
+      updatedAt: latestTrendAt ?? new Date().toISOString()
+    });
+  });
+
   router.get("/listings", async (_req, res) => {
     const listings = services.indexer.listAll();
     const withImages = await Promise.all(listings.map((listing) => enrichListingImage(listing)));

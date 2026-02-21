@@ -116,6 +116,7 @@ export interface AdminControlsRecord {
   pipelineEnabled: boolean;
   scheduleEnabled: boolean;
   trendTopicLimit: number;
+  trendRefreshIntervalHours: number;
   autoMintIntervalMinutes: number;
   autoMintBatchSize: number;
   dailyMinimumTarget: number;
@@ -269,6 +270,7 @@ export class InMemoryStore {
     pipelineEnabled: true,
     scheduleEnabled: true,
     trendTopicLimit: 3,
+    trendRefreshIntervalHours: 24,
     autoMintIntervalMinutes: 15,
     autoMintBatchSize: 1,
     dailyMinimumTarget: 0
@@ -440,6 +442,10 @@ export class InMemoryStore {
       this.adminControls = {
         ...snapshot.adminControls,
         trendTopicLimit: Math.max(1, Math.min(10, snapshot.adminControls.trendTopicLimit ?? 3)),
+        trendRefreshIntervalHours: Math.max(
+          1,
+          Math.min(168, snapshot.adminControls.trendRefreshIntervalHours ?? 24)
+        ),
         autoMintIntervalMinutes: Math.max(1, snapshot.adminControls.autoMintIntervalMinutes ?? 15),
         autoMintBatchSize: Math.max(1, Math.min(10, snapshot.adminControls.autoMintBatchSize ?? 1)),
         dailyMinimumTarget: Math.max(0, snapshot.adminControls.dailyMinimumTarget ?? 0)
@@ -1182,6 +1188,10 @@ export class InMemoryStore {
       patch.trendTopicLimit !== undefined
         ? Math.max(1, Math.min(10, patch.trendTopicLimit))
         : this.adminControls.trendTopicLimit;
+    const nextTrendRefreshIntervalHours =
+      patch.trendRefreshIntervalHours !== undefined
+        ? Math.max(1, Math.min(168, patch.trendRefreshIntervalHours))
+        : this.adminControls.trendRefreshIntervalHours;
     const nextAutoMintIntervalMinutes =
       patch.autoMintIntervalMinutes !== undefined
         ? Math.max(1, patch.autoMintIntervalMinutes)
@@ -1198,6 +1208,7 @@ export class InMemoryStore {
       ...this.adminControls,
       ...patch,
       trendTopicLimit: nextTrendTopicLimit,
+      trendRefreshIntervalHours: nextTrendRefreshIntervalHours,
       autoMintIntervalMinutes: nextAutoMintIntervalMinutes,
       autoMintBatchSize: nextAutoMintBatchSize,
       dailyMinimumTarget: nextDailyMinimumTarget
@@ -1520,11 +1531,13 @@ async function ensurePgPool(): Promise<Pool> {
       pipeline_enabled BOOLEAN NOT NULL,
       schedule_enabled BOOLEAN NOT NULL,
       trend_topic_limit INTEGER NOT NULL DEFAULT 3,
+      trend_refresh_interval_hours INTEGER NOT NULL DEFAULT 24,
       auto_mint_interval_minutes INTEGER NOT NULL DEFAULT 15,
       auto_mint_batch_size INTEGER NOT NULL DEFAULT 1,
       daily_minimum_target INTEGER NOT NULL DEFAULT 0
     );
     ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS trend_topic_limit INTEGER NOT NULL DEFAULT 3;
+    ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS trend_refresh_interval_hours INTEGER NOT NULL DEFAULT 24;
     ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS auto_mint_interval_minutes INTEGER NOT NULL DEFAULT 15;
     ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS auto_mint_batch_size INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE admin_controls ADD COLUMN IF NOT EXISTS daily_minimum_target INTEGER NOT NULL DEFAULT 0;
@@ -1865,6 +1878,10 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
           pipelineEnabled: Boolean(adminControlRows.rows[0].pipeline_enabled),
           scheduleEnabled: Boolean(adminControlRows.rows[0].schedule_enabled),
           trendTopicLimit: Math.max(1, Math.min(10, Number(adminControlRows.rows[0].trend_topic_limit ?? 3))),
+          trendRefreshIntervalHours: Math.max(
+            1,
+            Math.min(168, Number(adminControlRows.rows[0].trend_refresh_interval_hours ?? 24))
+          ),
           autoMintIntervalMinutes: Math.max(1, Number(adminControlRows.rows[0].auto_mint_interval_minutes ?? 15)),
           autoMintBatchSize: Math.max(1, Math.min(10, Number(adminControlRows.rows[0].auto_mint_batch_size ?? 1))),
           dailyMinimumTarget: Math.max(0, Number(adminControlRows.rows[0].daily_minimum_target ?? 0))
@@ -2227,17 +2244,19 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
         pipeline_enabled,
         schedule_enabled,
         trend_topic_limit,
+       trend_refresh_interval_hours,
         auto_mint_interval_minutes,
        auto_mint_batch_size,
        daily_minimum_target
        )
-       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)`,
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         snapshot.adminControls.dailyCap,
         snapshot.adminControls.hourlyCap,
         snapshot.adminControls.pipelineEnabled,
         snapshot.adminControls.scheduleEnabled,
         snapshot.adminControls.trendTopicLimit,
+        snapshot.adminControls.trendRefreshIntervalHours,
         snapshot.adminControls.autoMintIntervalMinutes,
         snapshot.adminControls.autoMintBatchSize,
         snapshot.adminControls.dailyMinimumTarget

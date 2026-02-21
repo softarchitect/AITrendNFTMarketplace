@@ -156,9 +156,17 @@ interface AdminControlsDto {
   pipelineEnabled: boolean
   scheduleEnabled: boolean
   trendTopicLimit: number
+  trendRefreshIntervalHours: number
   autoMintIntervalMinutes: number
   autoMintBatchSize: number
   dailyMinimumTarget: number
+}
+
+interface ThemePoolDto {
+  themes: string[]
+  maxThemes: number
+  refreshIntervalHours: number
+  updatedAt: string
 }
 
 interface AdminSeriesDto {
@@ -269,6 +277,16 @@ function createFallbackImage(tokenId: number): string {
   return `/placeholder.svg?height=512&width=512&query=trendmint%20nft%20${tokenId}`
 }
 
+function toReadableNftTitle(listing: ListingDto, themes: string[]): string {
+  const primaryTheme = themes[0] ?? "Digital"
+  const adjectives = ["Groovy", "Neon", "Echoing", "Luminous", "Quantum", "Velvet", "Cosmic", "Radiant"]
+  const nouns = ["Skyline", "Pulse", "Drift", "Mirage", "Horizon", "Signal", "Canvas", "Spectrum"]
+  const seed = listing.tokenId + primaryTheme.length
+  const adjective = adjectives[seed % adjectives.length]
+  const noun = nouns[(seed * 3) % nouns.length]
+  return `${adjective} ${primaryTheme} ${noun} #${listing.tokenId}`
+}
+
 function mapListingStatus(status: ListingDto["status"]): NFT["status"] {
   switch (status) {
     case "listed":
@@ -294,7 +312,7 @@ function mapListingToNft(listing: ListingDto): NFT {
     tokenId: listing.tokenId,
     chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 11155111),
     contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "",
-    title: `Affordable NFT #${listing.tokenId}`,
+    title: toReadableNftTitle(listing, listingThemes),
     description: `AI-generated NFT indexed from ${listing.tokenUri}`,
     imageUrl: listing.imageUrl || createFallbackImage(listing.tokenId),
     promptSummary: `Generated from ${listingThemes.join(", ")}`,
@@ -465,6 +483,15 @@ export async function getMarketplaceFilterOptions(): Promise<{
     sources,
     statuses
   }
+}
+
+export async function getMarketplaceThemePool(): Promise<{
+  themes: string[]
+  maxThemes: number
+  refreshIntervalHours: number
+  updatedAt: string
+}> {
+  return apiRequest<ThemePoolDto>("/api/marketplace/theme-pool")
 }
 
 export async function getNFTById(id: string): Promise<NFT | undefined> {
@@ -657,10 +684,11 @@ export async function getUserActivity(walletAddress?: string): Promise<ActivityE
   const purchaseEvents: ActivityEvent[] = receipts.map((receipt) => {
     const listing = listingById.get(receipt.listingId ?? "")
     const tokenId = listing?.tokenId ?? 0
+    const readableTitle = listing ? toReadableNftTitle(listing, listing.themes ?? []) : undefined
     return {
       id: `purchase-${receipt.id}`,
       type: "Purchase",
-      nftTitle: listing ? `Affordable NFT #${listing.tokenId}` : `Affordable NFT Purchase ${receipt.id.slice(0, 8)}`,
+      nftTitle: readableTitle ?? `Affordable NFT Purchase ${receipt.id.slice(0, 8)}`,
       nftImageUrl: listing?.imageUrl || createFallbackImage(tokenId || 1),
       amount: undefined,
       timestamp: receipt.createdAt,
@@ -672,7 +700,7 @@ export async function getUserActivity(walletAddress?: string): Promise<ActivityE
     .map((listing) => ({
       id: `ownership-${listing.id}`,
       type: listing.status === "listed" ? "Listing" : listing.status === "transferred" ? "Transfer" : "Mint",
-      nftTitle: `Affordable NFT #${listing.tokenId}`,
+      nftTitle: toReadableNftTitle(listing, listing.themes ?? []),
       nftImageUrl: listing.imageUrl || createFallbackImage(listing.tokenId),
       amount: Number((0.015 + (listing.tokenId % 5) * 0.005).toFixed(3)),
       timestamp: listing.updatedAt,

@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { AdminThemeRecord } from "../store/inMemoryStore";
 import { InMemoryStore } from "../store/inMemoryStore";
 import { AiService } from "./aiService";
 import { IndexerService } from "./indexerService";
@@ -137,6 +138,46 @@ export class PipelineService {
     return fallbackId;
   }
 
+  private pickNextTheme(activeThemes: AdminThemeRecord[]): string | undefined {
+    if (activeThemes.length === 0) return undefined;
+    const counts = new Map<string, number>();
+    const lastSeenAt = new Map<string, string>();
+    const normalizedToTheme = new Map<string, AdminThemeRecord>();
+    for (const theme of activeThemes) {
+      const key = theme.name.trim().toLowerCase();
+      counts.set(key, 0);
+      normalizedToTheme.set(key, theme);
+    }
+
+    const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+    const listings = [...this.db.listings.values()]
+      .filter((listing) => new Date(listing.updatedAt).getTime() >= cutoffMs)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    for (const listing of listings) {
+      for (const name of listing.themes ?? []) {
+        const key = name.trim().toLowerCase();
+        if (!counts.has(key)) continue;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        if (!lastSeenAt.has(key)) {
+          lastSeenAt.set(key, listing.updatedAt);
+        }
+      }
+    }
+
+    const minCount = Math.min(...counts.values());
+    const candidates = [...counts.entries()]
+      .filter(([, count]) => count === minCount)
+      .map(([key]) => normalizedToTheme.get(key))
+      .filter((item): item is AdminThemeRecord => Boolean(item))
+      .sort((a, b) => {
+        const aLast = lastSeenAt.get(a.name.trim().toLowerCase()) ?? "";
+        const bLast = lastSeenAt.get(b.name.trim().toLowerCase()) ?? "";
+        if (aLast !== bLast) return aLast.localeCompare(bLast);
+        return a.priority - b.priority;
+      });
+    return candidates[0]?.name;
+  }
+
   async runAutomatedMintCycle(input?: {
     recipient?: string;
     seriesId?: number;
@@ -151,21 +192,26 @@ export class PipelineService {
     }
 
     const resolvedThemeOverride = input?.themeOverride?.trim().replace(/\s+/g, " ");
+    const activeThemes = this.trends.getThemes().filter((theme) => theme.active);
+    const selectedTheme =
+      resolvedThemeOverride ??
+      this.pickNextTheme(activeThemes) ??
+      activeThemes.find((theme) => theme.type === "Trending")?.name ??
+      "AI Art";
     const resolvedLimit = Math.max(1, Math.min(10, input?.limit ?? this.db.adminControls.trendTopicLimit ?? 3));
-    const topicCandidates = resolvedThemeOverride
-      ? this.db.createTrend({
-          source: "manual",
-          topic: resolvedThemeOverride,
-          score: 100,
-          pinned: true
-        })
-      : undefined;
+    const recentCandidates = this.trends.getRecentTopics(resolvedLimit);
+    const candidates = recentCandidates.length > 0 ? recentCandidates : await this.trends.ingestTrends(resolvedLimit);
+    const selectedThemeKey = selectedTheme.trim().toLowerCase();
+    const matchedTopic = candidates.find((item) => item.topic.toLowerCase().includes(selectedThemeKey));
+    const fallbackTopic = candidates.find((item) => !item.pinned) ?? candidates[0];
     const resolvedTopic =
-      topicCandidates ??
-      (await (async () => {
-        const candidates = await this.trends.ingestTrends(resolvedLimit);
-        return candidates.find((item) => !item.pinned) ?? candidates[0];
-      })());
+      matchedTopic ??
+      this.db.createTrend({
+        source: resolvedThemeOverride ? "manual" : fallbackTopic?.source ?? "manual",
+        topic: selectedTheme,
+        score: fallbackTopic?.score ?? 90,
+        pinned: Boolean(resolvedThemeOverride)
+      });
     if (!resolvedTopic) {
       throw new Error("No trend topic available");
     }
@@ -192,17 +238,7 @@ export class PipelineService {
     this.trends.incrementMintCounters();
 
     const tokenId = minted.tokenId ?? this.db.listings.size + 1;
-    const activeThemes = this.trends.getThemes().filter((theme) => theme.active);
-    const matchedTheme = activeThemes.find(
-      (theme) => theme.name.toLowerCase() === resolvedTopic.topic.toLowerCase()
-    );
-    const fallbackTheme =
-      activeThemes.find((theme) => theme.type === "Trending")?.name ?? "AI Art";
-    const listingThemes = matchedTheme
-      ? [matchedTheme.name]
-      : resolvedTopic.pinned
-        ? [resolvedTopic.topic]
-        : [fallbackTheme];
+    const listingThemes = [selectedTheme];
     const seriesInfo = await this.minter.getSeriesInfo(seriesId);
     const editionSize =
       Number.isFinite(seriesInfo.maxSupply) && seriesInfo.maxSupply > 0
