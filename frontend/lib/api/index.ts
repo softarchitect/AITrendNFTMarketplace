@@ -294,13 +294,49 @@ function normalizeThemeDisplayName(raw: string): string {
   return title.length > 24 ? `${title.slice(0, 21).trim()}...` : title;
 }
 
+function hashSeed(input: string): number {
+  let hash = 0
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
 function toReadableNftTitle(listing: ListingDto, themes: string[]): string {
   const primaryTheme = normalizeThemeDisplayName(themes[0] ?? "Digital")
-  const adjectives = ["Groovy", "Neon", "Echoing", "Luminous", "Quantum", "Velvet", "Cosmic", "Radiant"]
-  const nouns = ["Skyline", "Pulse", "Drift", "Mirage", "Horizon", "Signal", "Canvas", "Spectrum"]
-  const seed = listing.tokenId + primaryTheme.length
-  const adjective = adjectives[seed % adjectives.length]
-  const noun = nouns[(seed * 3) % nouns.length]
+  const adjectives = [
+    "Neon",
+    "Echoing",
+    "Luminous",
+    "Quantum",
+    "Velvet",
+    "Cosmic",
+    "Radiant",
+    "Prismatic",
+    "Aurora",
+    "Solar",
+    "Urban",
+    "Electric",
+    "Crystal",
+    "Midnight",
+    "Golden",
+    "Silent",
+    "Vivid",
+    "Digital",
+    "Celestial",
+    "Glowing"
+  ]
+  const nouns = ["Skyline", "Pulse", "Drift", "Mirage", "Horizon", "Signal", "Canvas", "Spectrum", "Arc", "Bloom", "Orbit", "Wave"]
+  const baseKey = `${primaryTheme.toLowerCase()}`
+  const seed = hashSeed(`${listing.id}:${listing.tokenId}:${baseKey}`)
+  const prevSeed = hashSeed(`${listing.id}:${Math.max(0, listing.tokenId - 1)}:${baseKey}`)
+  let adjectiveIndex = seed % adjectives.length
+  const prevAdjectiveIndex = prevSeed % adjectives.length
+  if (listing.tokenId > 1 && adjectiveIndex === prevAdjectiveIndex) {
+    adjectiveIndex = (adjectiveIndex + 1) % adjectives.length
+  }
+  const adjective = adjectives[adjectiveIndex]
+  const noun = nouns[(seed >>> 3) % nouns.length]
   return `${adjective} ${primaryTheme} ${noun} #${listing.tokenId}`
 }
 
