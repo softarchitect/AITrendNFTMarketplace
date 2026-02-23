@@ -213,6 +213,61 @@ export class TrendIngestionService {
     return [...merged.values()].sort((a, b) => b.score - a.score);
   }
 
+  private normalizeTopicToThemeName(topic: string): string | undefined {
+    const stripped = topic
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/[#@][\w-]+/g, " ")
+      .replace(/[|_/]+/g, " ")
+      .replace(/[^a-zA-Z0-9' -]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!stripped) return undefined;
+
+    const banned = new Set([
+      "how",
+      "what",
+      "when",
+      "where",
+      "who",
+      "why",
+      "the",
+      "a",
+      "an",
+      "and",
+      "or",
+      "to",
+      "of",
+      "in",
+      "on",
+      "for",
+      "from",
+      "with",
+      "by",
+      "at",
+      "is",
+      "are",
+      "was",
+      "were",
+      "be",
+      "being",
+      "been",
+      "this",
+      "that"
+    ]);
+    const words = stripped
+      .split(" ")
+      .map((word) => word.trim())
+      .filter((word) => word.length >= 2)
+      .filter((word) => !banned.has(word.toLowerCase()))
+      .slice(0, 4);
+    if (words.length === 0) return undefined;
+
+    const titleCased = words
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+    return titleCased.slice(0, 48).trim();
+  }
+
   async ingestLiveTrends(limit = config.trends.fetchLimit): Promise<TrendTopic[]> {
     const output: TrendTopic[] = [];
     for (const theme of this.db.pinnedThemes) {
@@ -292,14 +347,12 @@ export class TrendIngestionService {
 
   syncTrendingThemesFromTopics(topics: TrendTopic[], limit: number): AdminThemeRecord[] {
     const maxThemes = Math.max(1, Math.min(10, limit));
-    const selectedNames = Array.from(
-      new Set(
-        topics
-          .filter((item) => !item.pinned)
-          .map((item) => item.topic.trim())
-          .filter((name) => name.length > 0)
-      )
-    ).slice(0, maxThemes);
+    const selectedNames = Array.from(new Set(
+      topics
+        .filter((item) => !item.pinned)
+        .map((item) => this.normalizeTopicToThemeName(item.topic))
+        .filter((name): name is string => typeof name === "string" && name.length > 0)
+    )).slice(0, maxThemes);
     if (selectedNames.length === 0) {
       return this.getThemes();
     }

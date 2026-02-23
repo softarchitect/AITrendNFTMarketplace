@@ -277,8 +277,25 @@ function createFallbackImage(tokenId: number): string {
   return `/placeholder.svg?height=512&width=512&query=trendmint%20nft%20${tokenId}`
 }
 
+function normalizeThemeDisplayName(raw: string): string {
+  const cleaned = raw
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/[#@][\w-]+/g, " ")
+    .replace(/[^a-zA-Z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "AI Art";
+  const words = cleaned.split(" ").slice(0, 3);
+  const title = words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ")
+    .trim();
+  if (!title) return "AI Art";
+  return title.length > 24 ? `${title.slice(0, 21).trim()}...` : title;
+}
+
 function toReadableNftTitle(listing: ListingDto, themes: string[]): string {
-  const primaryTheme = themes[0] ?? "Digital"
+  const primaryTheme = normalizeThemeDisplayName(themes[0] ?? "Digital")
   const adjectives = ["Groovy", "Neon", "Echoing", "Luminous", "Quantum", "Velvet", "Cosmic", "Radiant"]
   const nouns = ["Skyline", "Pulse", "Drift", "Mirage", "Horizon", "Signal", "Canvas", "Spectrum"]
   const seed = listing.tokenId + primaryTheme.length
@@ -306,7 +323,9 @@ function mapListingToNft(listing: ListingDto): NFT {
   const fallbackUsd = Number((100 + (listing.tokenId % 5) * 15).toFixed(2))
   const usdPrice = Number.isFinite(configuredUsd) && (configuredUsd ?? 0) > 0 ? Number(configuredUsd) : fallbackUsd
   const basePrice = Number((usdPrice / 3000).toFixed(6))
-  const listingThemes = listing.themes && listing.themes.length > 0 ? listing.themes : ["AI Art"]
+  const listingThemes = (listing.themes && listing.themes.length > 0 ? listing.themes : ["AI Art"])
+    .map((theme) => normalizeThemeDisplayName(theme))
+    .filter((theme, index, array) => array.indexOf(theme) === index)
   return {
     id: listing.id,
     tokenId: listing.tokenId,
