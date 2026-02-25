@@ -123,10 +123,21 @@ export class PipelineService {
     const currentSeriesIds = availableSeries.map((item) => item.seriesId);
     const candidates = this.deriveTemplateSeriesCandidates(currentSeriesIds);
 
+    // Prefer reusing any currently open series first (latest series first),
+    // so we only create a new series when all available series are full.
+    const openSeriesSorted = [...openSeriesIds.values()].sort((a, b) => b - a);
+    const openCandidate = candidates.find((id) => openSeriesIds.has(id));
+    if (openCandidate) {
+      return openCandidate;
+    }
+    if (openSeriesSorted.length > 0) {
+      return openSeriesSorted[0];
+    }
+
+    // No open series available -> create next candidate that does not exist yet.
+    const existingSet = new Set(currentSeriesIds);
     for (const candidate of candidates) {
-      if (openSeriesIds.has(candidate)) {
-        return candidate;
-      }
+      if (existingSet.has(candidate)) continue;
       await this.createSeriesWithLock(candidate);
       await this.minter.ensureSeriesMintable(candidate);
       return candidate;
