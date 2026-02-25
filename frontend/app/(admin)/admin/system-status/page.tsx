@@ -177,6 +177,10 @@ export default function AdminSystemStatusPage() {
               comp.id === "series-lifecycle" && typeof comp.metadata?.lastSeriesCreateTxHash === "string"
                 ? comp.metadata.lastSeriesCreateTxHash
                 : undefined
+            const nextAutoMintAt =
+              comp.id === "scheduler" && typeof comp.metadata?.nextAutoMintAt === "string"
+                ? comp.metadata.nextAutoMintAt
+                : undefined
             return (
               <motion.div key={comp.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
                 <Card className="border-border">
@@ -199,6 +203,13 @@ export default function AdminSystemStatusPage() {
                             </span>
                             <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
                               Last Create Tx: {lastSeriesCreateTxHash ? `${lastSeriesCreateTxHash.slice(0, 10)}...` : "none"}
+                            </span>
+                          </div>
+                        )}
+                        {comp.id === "scheduler" && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+                              Next Auto-Mint: {nextAutoMintAt ? new Date(nextAutoMintAt).toLocaleString() : "n/a"}
                             </span>
                           </div>
                         )}

@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { MintNowDialog } from "@/components/mint-now-dialog"
 import { StatusPill } from "@/components/status-pill"
 import { PageTransition } from "@/components/page-transition"
-import { getAdminOverview, getMintControls, getMintQueue, retryMint, type RunMintCycleResult, updateMintControls } from "@/lib/api"
+import { getAdminOverview, getMintControls, getMintQueue, getSystemStatus, retryMint, type RunMintCycleResult, updateMintControls } from "@/lib/api"
 import type { NFT } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -24,6 +24,7 @@ export default function MintingQueuePage() {
   const [autoMintBatchSize, setAutoMintBatchSize] = useState<number>(1)
   const [dailyMinimumTarget, setDailyMinimumTarget] = useState<number>(0)
   const [mintedToday, setMintedToday] = useState<number>(0)
+  const [nextAutoMintAt, setNextAutoMintAt] = useState<string | null>(null)
   const [selected, setSelected] = useState<NFT | null>(null)
   const [retrying, setRetrying] = useState<string | null>(null)
 
@@ -33,8 +34,8 @@ export default function MintingQueuePage() {
   }
 
   useEffect(() => {
-    Promise.all([getMintQueue(), getMintControls(), getAdminOverview()])
-      .then(([data, controls, overview]) => {
+    Promise.all([getMintQueue(), getMintControls(), getAdminOverview(), getSystemStatus()])
+      .then(([data, controls, overview, status]) => {
         setQueue(data)
         setPipelineActive(controls.pipelineEnabled)
         setTopicLimit(controls.trendTopicLimit ?? 3)
@@ -42,6 +43,12 @@ export default function MintingQueuePage() {
         setAutoMintBatchSize(controls.autoMintBatchSize ?? 1)
         setDailyMinimumTarget(controls.dailyMinimumTarget ?? 0)
         setMintedToday(overview.mintedToday ?? 0)
+        const scheduler = status.find((item) => item.id === "scheduler")
+        const nextMint =
+          scheduler && typeof scheduler.metadata?.nextAutoMintAt === "string"
+            ? scheduler.metadata.nextAutoMintAt
+            : null
+        setNextAutoMintAt(nextMint)
         setLoading(false)
       })
   }, [])
@@ -182,6 +189,12 @@ export default function MintingQueuePage() {
               <span className="text-muted-foreground">Today progress</span>
               <span className="font-medium text-foreground">
                 {dailyMinimumTarget > 0 ? `${mintedToday}/${dailyMinimumTarget}` : `${mintedToday}/off`}
+              </span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+              <span className="text-muted-foreground">Next auto-mint</span>
+              <span className="font-medium text-foreground">
+                {nextAutoMintAt ? new Date(nextAutoMintAt).toLocaleString() : "n/a"}
               </span>
             </div>
           </div>

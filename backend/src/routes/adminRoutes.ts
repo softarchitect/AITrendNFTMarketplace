@@ -1147,6 +1147,14 @@ export function createAdminRoutes(services: Services): Router {
     const recentAuditFailure = services.db.auditLogs.find((item) =>
       ["admin_login_failed", "partner_api_call"].includes(item.action)
     );
+    const latestSchedulerAudit = services.db.auditLogs.find((item) =>
+      ["auto_mint_cycle_triggered", "auto_mint_cycle_failed", "auto_mint_cycle_skipped"].includes(item.action)
+    );
+    const lastSchedulerRunAt =
+      typeof latestSchedulerAudit?.createdAt === "string" ? new Date(latestSchedulerAudit.createdAt).getTime() : NaN;
+    const nextAutoMintAt = Number.isFinite(lastSchedulerRunAt)
+      ? new Date(lastSchedulerRunAt + nextIntervalMinutes * 60_000).toISOString()
+      : new Date(Date.now() + nextIntervalMinutes * 60_000).toISOString();
     let nextSeriesIdPreview: number | undefined;
     try {
       const availableSeries = await getAvailableSeriesWithTimeout(40, 5000);
@@ -1236,6 +1244,12 @@ export function createAdminRoutes(services: Services): Router {
               : "Operational",
         lastChecked: now,
         detail: `interval=${nextIntervalMinutes}m, batch=${services.db.adminControls.autoMintBatchSize}, today=${mintedToday}/${dailyCap}, thisHour=${currentHourCount}/${hourlyCap}, minTarget=${dailyMinimumTarget}`,
+        metadata: {
+          nextAutoMintAt,
+          intervalMinutes: nextIntervalMinutes,
+          pipelineEnabled: services.db.adminControls.pipelineEnabled,
+          scheduleEnabled: services.db.adminControls.scheduleEnabled
+        },
         lastIncident:
           !services.db.adminControls.pipelineEnabled || !services.db.adminControls.scheduleEnabled
             ? "Pipeline or schedule toggle is disabled"
