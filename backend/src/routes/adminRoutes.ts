@@ -625,6 +625,91 @@ export function createAdminRoutes(services: Services): Router {
     });
   });
 
+  router.get("/wallet-handover", async (_req, res) => {
+    const signer = await services.minter.getSignerStatus();
+    return res.json({
+      signer,
+      requirements: [
+        "Provide target admin wallet address on the configured chain",
+        "Grant DEFAULT_ADMIN_ROLE to that wallet on TrendMint721",
+        "Set ADMIN_PRIVATE_KEY on backend to the same wallet",
+        "Restart backend process with updated environment"
+      ]
+    });
+  });
+
+  router.post("/uat/demo-user", (req, res) => {
+    const schema = z.object({
+      email: z.string().email(),
+      password: z.string().min(8),
+      displayName: z.string().min(2).max(80).default("UAT Buyer")
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    const complexity = validatePasswordComplexity(parsed.data.password);
+    if (!complexity.ok) {
+      return res.status(400).json({ error: complexity.errors });
+    }
+    const record = services.db.upsertUser({
+      email: parsed.data.email.toLowerCase(),
+      passwordHash: hashPassword(parsed.data.password),
+      displayName: parsed.data.displayName,
+      role: "User",
+      kycStatus: "Verified",
+      twoFAEnabled: false,
+      isActive: true
+    });
+    appendAuditLog(
+      "uat_demo_user_upserted",
+      { userId: record.id, email: record.email },
+      res.locals.adminActorEmail
+    );
+    return res.status(201).json({
+      id: record.id,
+      email: record.email,
+      displayName: record.displayName,
+      role: record.role,
+      isActive: record.isActive
+    });
+  });
+
+  router.get("/content-pages", (_req, res) => {
+    return res.json(services.db.listCmsPages());
+  });
+
+  router.get("/content-pages/:slug", (req, res) => {
+    const page = services.db.getCmsPage(req.params.slug);
+    if (!page) {
+      return res.status(404).json({ error: "Content page not found" });
+    }
+    return res.json(page);
+  });
+
+  router.post("/content-pages/:slug", (req, res) => {
+    const schema = z.object({
+      title: z.string().min(2).max(120),
+      content: z.string().min(1).max(20000)
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues });
+    }
+    const updated = services.db.upsertCmsPage({
+      slug: req.params.slug,
+      title: parsed.data.title,
+      content: parsed.data.content,
+      updatedBy: res.locals.adminActorEmail
+    });
+    appendAuditLog(
+      "cms_page_updated",
+      { slug: updated.slug, title: updated.title },
+      res.locals.adminActorEmail
+    );
+    return res.json(updated);
+  });
+
   router.post("/trend-sources", (req, res) => {
     const schema = z.object({ sources: z.array(z.string().min(2)) });
     const parsed = schema.safeParse(req.body);

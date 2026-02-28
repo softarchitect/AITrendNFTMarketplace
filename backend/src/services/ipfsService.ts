@@ -39,16 +39,33 @@ export class IpfsService {
   }
 
   buildMetadata(asset: GeneratedAsset, editionSize: number): NftMetadata {
+    const readableTopic = this.normalizeTopic(asset.topic);
     return {
-      name: `TrendMint: ${asset.topic}`,
-      description: `Auto-generated from social trend topic: ${asset.topic}`,
+      name: `${readableTopic} - Affordable NFT`,
+      description: `AI-generated artwork inspired by "${readableTopic}".`,
       image: asset.mediaUrl,
       attributes: [
-        { trait_type: "topic", value: asset.topic },
+        { trait_type: "topic", value: readableTopic },
         { trait_type: "provider", value: asset.provider },
         { trait_type: "edition_size", value: editionSize }
       ]
     };
+  }
+
+  private normalizeTopic(raw: string): string {
+    const cleaned = raw
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/[#@][\w-]+/g, " ")
+      .replace(/[^a-zA-Z0-9\s-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) return "AI Art";
+    const words = cleaned.split(" ").slice(0, 5);
+    const titled = words
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ")
+      .trim();
+    return titled || "AI Art";
   }
 
   async pinAssetAndMetadata(asset: GeneratedAsset, editionSize: number): Promise<PinnedMetadata> {

@@ -4,10 +4,11 @@ import { Sparkles } from "lucide-react"
 const footerLinks = [
   { label: "Terms", href: "/legal/terms" },
   { label: "Privacy", href: "/legal/privacy" },
+  { label: "Policy", href: "/legal/policy" },
   { label: "Status", href: "/status" },
   { label: "FAQ", href: "/faq" },
   { label: "Docs", href: "/partners" },
-  { label: "Contact", href: "#" },
+  { label: "Contact", href: "/contact" },
 ]
 
 export function Footer() {

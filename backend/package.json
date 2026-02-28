@@ -10,6 +10,7 @@
     "demo:webhooks": "tsx scripts/demo-webhooks.ts",
     "demo:webhooks:json": "tsx scripts/demo-webhooks-report.ts",
     "evidence:m2": "tsx scripts/generate-m2-evidence.ts",
+    "evidence:final": "tsx scripts/generate-final-closeout-evidence.ts",
     "admin:hash": "tsx scripts/generate-admin-password-hash.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

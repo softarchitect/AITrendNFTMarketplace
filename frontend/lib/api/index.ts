@@ -169,6 +169,27 @@ interface ThemePoolDto {
   updatedAt: string
 }
 
+interface CmsPageDto {
+  slug: string
+  title: string
+  content: string
+  updatedAt: string
+  updatedBy: string
+}
+
+interface WalletHandoverDto {
+  signer: {
+    mode: "mock" | "chain"
+    contractAddress: string
+    chainId: number
+    minterAddress?: string
+    adminAddress?: string
+    adminConfigured: boolean
+    hasDefaultAdminRole?: boolean
+  }
+  requirements: string[]
+}
+
 interface AdminSeriesDto {
   seriesId: number
   maxSupply: number
@@ -304,40 +325,11 @@ function hashSeed(input: string): number {
 
 function toReadableNftTitle(listing: ListingDto, themes: string[]): string {
   const primaryTheme = normalizeThemeDisplayName(themes[0] ?? "Digital")
-  const adjectives = [
-    "Neon",
-    "Echoing",
-    "Luminous",
-    "Quantum",
-    "Velvet",
-    "Cosmic",
-    "Radiant",
-    "Prismatic",
-    "Aurora",
-    "Solar",
-    "Urban",
-    "Electric",
-    "Crystal",
-    "Midnight",
-    "Golden",
-    "Silent",
-    "Vivid",
-    "Digital",
-    "Celestial",
-    "Glowing"
-  ]
-  const nouns = ["Skyline", "Pulse", "Drift", "Mirage", "Horizon", "Signal", "Canvas", "Spectrum", "Arc", "Bloom", "Orbit", "Wave"]
+  const descriptors = ["Study", "Edition", "Chronicle", "Moment", "Series", "Portrait", "Insight", "Collection"]
   const baseKey = `${primaryTheme.toLowerCase()}`
   const seed = hashSeed(`${listing.id}:${listing.tokenId}:${baseKey}`)
-  const prevSeed = hashSeed(`${listing.id}:${Math.max(0, listing.tokenId - 1)}:${baseKey}`)
-  let adjectiveIndex = seed % adjectives.length
-  const prevAdjectiveIndex = prevSeed % adjectives.length
-  if (listing.tokenId > 1 && adjectiveIndex === prevAdjectiveIndex) {
-    adjectiveIndex = (adjectiveIndex + 1) % adjectives.length
-  }
-  const adjective = adjectives[adjectiveIndex]
-  const noun = nouns[(seed >>> 3) % nouns.length]
-  return `${adjective} ${primaryTheme} ${noun} #${listing.tokenId}`
+  const descriptor = descriptors[seed % descriptors.length]
+  return `${primaryTheme} ${descriptor} #${listing.tokenId}`
 }
 
 function mapListingStatus(status: ListingDto["status"]): NFT["status"] {
@@ -547,6 +539,10 @@ export async function getMarketplaceThemePool(): Promise<{
   updatedAt: string
 }> {
   return apiRequest<ThemePoolDto>("/api/marketplace/theme-pool")
+}
+
+export async function getPublicContentPage(slug: string): Promise<CmsPageDto> {
+  return apiRequest<CmsPageDto>(`/api/marketplace/content-pages/${encodeURIComponent(slug)}`)
 }
 
 export async function getNFTById(id: string): Promise<NFT | undefined> {
@@ -1038,12 +1034,41 @@ export async function getGatewayHealth(): Promise<GatewayHealthDto> {
   return apiRequest<GatewayHealthDto>("/api/admin/gateway-health")
 }
 
+export async function getWalletHandoverStatus(): Promise<WalletHandoverDto> {
+  return apiRequest<WalletHandoverDto>("/api/admin/wallet-handover")
+}
+
 export async function getWebhookLogs(): Promise<WebhookLogDto[]> {
   return apiRequest<WebhookLogDto[]>("/api/admin/logs/webhooks")
 }
 
 export async function getAuditLogs(): Promise<AuditLogDto[]> {
   return apiRequest<AuditLogDto[]>("/api/admin/logs/audit")
+}
+
+export async function getAdminContentPages(): Promise<CmsPageDto[]> {
+  return apiRequest<CmsPageDto[]>("/api/admin/content-pages")
+}
+
+export async function updateAdminContentPage(
+  slug: string,
+  payload: { title: string; content: string }
+): Promise<CmsPageDto> {
+  return apiRequest<CmsPageDto>(`/api/admin/content-pages/${encodeURIComponent(slug)}`, {
+    method: "POST",
+    body: payload
+  })
+}
+
+export async function createUatDemoUser(payload: {
+  email: string
+  password: string
+  displayName: string
+}): Promise<{ id: string; email: string; displayName: string; role: "User"; isActive: boolean }> {
+  return apiRequest("/api/admin/uat/demo-user", {
+    method: "POST",
+    body: payload
+  })
 }
 
 export async function updateDefaultEditionSize(size: number): Promise<{ defaultSize: number }> {

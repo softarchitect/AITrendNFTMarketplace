@@ -7,7 +7,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Sparkles, LayoutDashboard, ListOrdered, ImageIcon, TrendingUp, Palette,
-  Layers, CreditCard, Users, Shield, Key, Settings, Activity, Menu, LogOut, LockKeyhole,
+  Layers, CreditCard, Users, Shield, Key, Settings, Activity, Menu, LogOut, LockKeyhole, FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -41,6 +41,7 @@ const navItems = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/admin-users", label: "Admin Users", icon: Shield },
   { href: "/admin/partner-api-keys", label: "API Keys", icon: Key },
+  { href: "/admin/content", label: "Content CMS", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/system-status", label: "System Status", icon: Activity },
 ]

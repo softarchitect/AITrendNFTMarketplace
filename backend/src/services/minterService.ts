@@ -41,6 +41,38 @@ export class MinterService {
     return this.isMock ? "mock" : "chain";
   }
 
+  async getSignerStatus(): Promise<{
+    mode: "mock" | "chain";
+    contractAddress: string;
+    chainId: number;
+    minterAddress?: string;
+    adminAddress?: string;
+    adminConfigured: boolean;
+    hasDefaultAdminRole?: boolean;
+  }> {
+    const base = {
+      mode: this.mode,
+      contractAddress: config.contractAddress,
+      chainId: config.chainId,
+      minterAddress: this.minterAddress,
+      adminAddress: this.adminAddress,
+      adminConfigured: Boolean(config.adminPrivateKey)
+    };
+    if (this.isMock || !this.adminContract || !this.adminAddress) {
+      return base;
+    }
+    try {
+      const adminRole = await this.adminContract.DEFAULT_ADMIN_ROLE();
+      const hasRole = await this.adminContract.hasRole(adminRole, this.adminAddress);
+      return {
+        ...base,
+        hasDefaultAdminRole: Boolean(hasRole)
+      };
+    } catch {
+      return base;
+    }
+  }
+
   async mintFromSeries(seriesId: number, to: string, tokenUri: string): Promise<{
     txHash: string;
     tokenId?: number;

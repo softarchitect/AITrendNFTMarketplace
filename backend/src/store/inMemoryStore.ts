@@ -171,6 +171,14 @@ export interface AuditLogRecord {
   details: Record<string, unknown>;
 }
 
+export interface CmsPageRecord {
+  slug: string;
+  title: string;
+  content: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 interface StoreSnapshot {
   trends: TrendTopic[];
   jobs: GenerationJob[];
@@ -200,6 +208,7 @@ interface StoreSnapshot {
   editionOverrides: Array<[string, number]>;
   partnerApiKeys: PartnerApiKeyRecord[];
   auditLogs: AuditLogRecord[];
+  cmsPages: CmsPageRecord[];
 }
 
 function createDefaultThemeRecords(): AdminThemeRecord[] {
@@ -214,6 +223,78 @@ function createDefaultThemeRecords(): AdminThemeRecord[] {
     createdAt: now,
     updatedAt: now
   }));
+}
+
+function createDefaultCmsPages(): CmsPageRecord[] {
+  const now = new Date().toISOString();
+  return [
+    {
+      slug: "faq",
+      title: "Frequently Asked Questions",
+      content: [
+        "Q: What is Affordable NFT?",
+        "A: Affordable NFT is an AI-powered NFT marketplace that mints trend-inspired artwork.",
+        "",
+        "Q: How do purchases work?",
+        "A: Purchase flow is payment session -> payment confirmation -> on-chain transfer -> receipt.",
+        "",
+        "Q: Which wallet do I need?",
+        "A: Any EVM wallet compatible with WalletConnect or MetaMask works."
+      ].join("\n"),
+      updatedAt: now,
+      updatedBy: "system"
+    },
+    {
+      slug: "terms",
+      title: "Terms of Service",
+      content: [
+        "By using Affordable NFT, you agree to these terms.",
+        "",
+        "All blockchain transactions are final once confirmed on-chain.",
+        "",
+        "Users are responsible for account and wallet security."
+      ].join("\n"),
+      updatedAt: now,
+      updatedBy: "system"
+    },
+    {
+      slug: "privacy",
+      title: "Privacy Policy",
+      content: [
+        "We collect account and usage data needed to operate the platform.",
+        "",
+        "We do not sell personal data to third parties.",
+        "",
+        "For privacy requests, contact privacy@affordablenft.com."
+      ].join("\n"),
+      updatedAt: now,
+      updatedBy: "system"
+    },
+    {
+      slug: "contact",
+      title: "Contact",
+      content: [
+        "General inquiries: support@affordablenft.com",
+        "Partnerships: partners@affordablenft.com",
+        "Security: security@affordablenft.com"
+      ].join("\n"),
+      updatedAt: now,
+      updatedBy: "system"
+    },
+    {
+      slug: "policy",
+      title: "Platform Policy",
+      content: [
+        "Affordable NFT enforces fair usage, anti-abuse, and content safety controls.",
+        "",
+        "Users must comply with applicable laws and platform rules when using the marketplace.",
+        "",
+        "Violation of policy may result in account restriction or suspension."
+      ].join("\n"),
+      updatedAt: now,
+      updatedBy: "system"
+    }
+  ];
 }
 
 function sanitizePricingMap(
@@ -264,6 +345,9 @@ export class InMemoryStore {
   public readonly editionOverrides = new Map<string, number>();
   public readonly partnerApiKeys = new Map<string, PartnerApiKeyRecord>();
   public auditLogs: AuditLogRecord[] = [];
+  public readonly cmsPages = new Map<string, CmsPageRecord>(
+    createDefaultCmsPages().map((page) => [page.slug, page])
+  );
   public adminControls: AdminControlsRecord = {
     dailyCap: 50,
     hourlyCap: 10,
@@ -499,6 +583,15 @@ export class InMemoryStore {
     this.partnerApiKeys.clear();
     for (const item of snapshot.partnerApiKeys ?? []) this.partnerApiKeys.set(item.id, item);
     this.auditLogs = snapshot.auditLogs ?? [];
+    this.cmsPages.clear();
+    for (const page of snapshot.cmsPages ?? []) {
+      this.cmsPages.set(page.slug, page);
+    }
+    for (const page of createDefaultCmsPages()) {
+      if (!this.cmsPages.has(page.slug)) {
+        this.cmsPages.set(page.slug, page);
+      }
+    }
   }
 
   toSnapshot(): StoreSnapshot {
@@ -530,7 +623,8 @@ export class InMemoryStore {
       defaultEditionSize: this.defaultEditionSize,
       editionOverrides: [...this.editionOverrides.entries()],
       partnerApiKeys: [...this.partnerApiKeys.values()],
-      auditLogs: this.auditLogs
+      auditLogs: this.auditLogs,
+      cmsPages: [...this.cmsPages.values()]
     };
   }
 
@@ -1306,6 +1400,32 @@ export class InMemoryStore {
     this.touch();
     return entry;
   }
+
+  listCmsPages(): CmsPageRecord[] {
+    return [...this.cmsPages.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+  }
+
+  getCmsPage(slug: string): CmsPageRecord | undefined {
+    return this.cmsPages.get(slug.trim().toLowerCase());
+  }
+
+  upsertCmsPage(input: { slug: string; title: string; content: string; updatedBy: string }): CmsPageRecord {
+    const slug = input.slug.trim().toLowerCase();
+    if (!slug) {
+      throw new Error("CMS page slug is required");
+    }
+    const now = new Date().toISOString();
+    const next: CmsPageRecord = {
+      slug,
+      title: input.title.trim() || slug,
+      content: input.content,
+      updatedAt: now,
+      updatedBy: input.updatedBy
+    };
+    this.cmsPages.set(slug, next);
+    this.touch();
+    return next;
+  }
 }
 
 const storeFilePath = path.resolve(process.cwd(), config.persistence.storeFilePath);
@@ -1578,6 +1698,13 @@ async function ensurePgPool(): Promise<Pool> {
       created_at TIMESTAMPTZ NOT NULL,
       details JSONB NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS cms_pages (
+      slug TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      updated_by TEXT NOT NULL
+    );
   `);
   return pgPool;
 }
@@ -1608,7 +1735,8 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
     appSettingsRows,
     editionOverrideRows,
     partnerKeyRows,
-    auditLogRows
+    auditLogRows,
+    cmsPageRows
   ] = await Promise.all([
     pool.query("SELECT * FROM trend_topics"),
     pool.query("SELECT * FROM generation_jobs"),
@@ -1633,7 +1761,8 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
     pool.query("SELECT * FROM app_settings WHERE id = 1"),
     pool.query("SELECT * FROM edition_overrides"),
     pool.query("SELECT * FROM partner_api_keys"),
-    pool.query("SELECT * FROM audit_logs ORDER BY created_at DESC")
+    pool.query("SELECT * FROM audit_logs ORDER BY created_at DESC"),
+    pool.query("SELECT * FROM cms_pages")
   ]);
 
   const hasAnyRows = [
@@ -1660,7 +1789,8 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
     appSettingsRows.rowCount,
     editionOverrideRows.rowCount,
     partnerKeyRows.rowCount,
-    auditLogRows.rowCount
+    auditLogRows.rowCount,
+    cmsPageRows.rowCount
   ].some((count) => Number(count) > 0);
 
   if (!hasAnyRows) return false;
@@ -1989,6 +2119,13 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
       actor: row.actor,
       createdAt: new Date(row.created_at).toISOString(),
       details: row.details ?? {}
+    })),
+    cmsPages: cmsPageRows.rows.map((row) => ({
+      slug: row.slug,
+      title: row.title,
+      content: row.content,
+      updatedAt: new Date(row.updated_at).toISOString(),
+      updatedBy: row.updated_by
     }))
   };
 
@@ -2311,6 +2448,15 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
         `INSERT INTO audit_logs (id, action, actor, created_at, details)
          VALUES ($1, $2, $3, $4, $5::jsonb)`,
         [row.id, row.action, row.actor, row.createdAt, JSON.stringify(row.details)]
+      );
+    }
+
+    await client.query("DELETE FROM cms_pages");
+    for (const row of snapshot.cmsPages) {
+      await client.query(
+        `INSERT INTO cms_pages (slug, title, content, updated_at, updated_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [row.slug, row.title, row.content, row.updatedAt, row.updatedBy]
       );
     }
 

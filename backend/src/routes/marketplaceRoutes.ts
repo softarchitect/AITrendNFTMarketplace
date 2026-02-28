@@ -155,6 +155,14 @@ export function createMarketplaceRoutes(services: Services): Router {
     });
   });
 
+  router.get("/content-pages/:slug", (req, res) => {
+    const page = services.db.getCmsPage(req.params.slug);
+    if (!page) {
+      return res.status(404).json({ error: "Content page not found" });
+    }
+    return res.json(page);
+  });
+
   router.get("/listings", async (_req, res) => {
     const listings = services.indexer.listAll();
     const withImages = await Promise.all(listings.map((listing) => enrichListingImage(listing)));

@@ -1,0 +1,124 @@
+{
+  "generatedAt": "2026-02-28T16:41:56.446Z",
+  "summary": {
+    "allPassed": true,
+    "passed": 15,
+    "total": 15
+  },
+  "steps": [
+    {
+      "step": "health_check",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "admin_session_seeded",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "cms_pages_list",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "cms_page_write",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "wallet_handover_status",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "uat_user_create",
+      "status": 201,
+      "ok": true
+    },
+    {
+      "step": "manual_mint_cycle",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "gateway_set_live_generic",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "manual_purchase_session_create",
+      "status": 201,
+      "ok": true
+    },
+    {
+      "step": "manual_settle_before_confirm_blocked",
+      "status": 409,
+      "ok": true
+    },
+    {
+      "step": "manual_payment_webhook_confirm",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "manual_settle_after_confirm",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "manual_receipts_fetch",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "partner_api_key_create",
+      "status": 201,
+      "ok": true
+    },
+    {
+      "step": "partner_bulk_purchase",
+      "status": 201,
+      "ok": true
+    }
+  ],
+  "handover": {
+    "walletStatus": {
+      "signer": {
+        "mode": "mock",
+        "contractAddress": "0xa97a9dA0A4E1214E6784fCA0453A5cC141D0c7dA",
+        "chainId": 11155111,
+        "adminConfigured": true
+      },
+      "requirements": [
+        "Provide target admin wallet address on the configured chain",
+        "Grant DEFAULT_ADMIN_ROLE to that wallet on TrendMint721",
+        "Set ADMIN_PRIVATE_KEY on backend to the same wallet",
+        "Restart backend process with updated environment"
+      ]
+    },
+    "requiredInputsForFinalSwitch": [
+      "Client admin wallet address",
+      "Confirmation that DEFAULT_ADMIN_ROLE is granted on contract",
+      "Secure method to receive/set ADMIN_PRIVATE_KEY on server",
+      "Approved maintenance window for pm2 restart"
+    ]
+  },
+  "uat": {
+    "email": "demo.buyer+20260228-084154@affordablenft.com",
+    "password": "DemoBuyer#2026",
+    "displayName": "Demo Buyer"
+  },
+  "partner": {
+    "keyPrefix": "pk_live_lmkgb7j9",
+    "rawKeyMasked": "pk_***7gj",
+    "bulkPurchaseStatus": 201
+  },
+  "manualPurchase": {
+    "listingId": "618af2fd-cd16-456b-85c9-1410c786f02a",
+    "paymentId": "bf4253e8-e797-4867-9fba-8cca6e7aefce",
+    "externalRef": "mock_20687ee9-2358-42a9-b531-89621e6481b9",
+    "checkoutUrl": "https://sandbox-gateway.local/session/mock_20687ee9-2358-42a9-b531-89621e6481b9",
+    "settleTxHash": "0xmocktransfer00000001"
+  }
+}
