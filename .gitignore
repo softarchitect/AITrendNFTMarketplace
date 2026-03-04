@@ -24,6 +24,7 @@ yarn-error.log*
 **/coverage/
 **/coverage.json
 
-docs/
+# docs/
 generated/
 backend/.env
+/docs
