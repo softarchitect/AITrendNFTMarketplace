@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-02-11T14:55:07.314Z",
+  "scenarios": [
+    {
+      "provider": "vellis",
+      "externalRef": "vellis_tx_001",
+      "httpStatus": 200,
+      "beforeStatus": "pending",
+      "afterStatus": "confirmed",
+      "success": true
+    },
+    {
+      "provider": "wert",
+      "externalRef": "wert_order_001",
+      "httpStatus": 200,
+      "beforeStatus": "pending",
+      "afterStatus": "failed",
+      "success": true
+    }
+  ],
+  "success": true
+}

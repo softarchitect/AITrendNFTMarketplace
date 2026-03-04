@@ -301,7 +301,7 @@ export function createAdminRoutes(services: Services): Router {
       // Optional artifact; do nothing if directory is absent in current environment.
     }
 
-    const withStats = await Promise.all(
+    const withStats = await Promise.allSettled(
       docs.map(async (item) => {
         const stat = await fs.stat(item.path);
         return {
@@ -312,7 +312,19 @@ export function createAdminRoutes(services: Services): Router {
         };
       })
     );
-    return withStats;
+
+    return withStats
+      .filter(
+        (
+          result
+        ): result is PromiseFulfilledResult<{
+          id: string;
+          title: string;
+          path: string;
+          updatedAt: string;
+        }> => result.status === "fulfilled"
+      )
+      .map((result) => result.value);
   }
 
   router.post("/auth/login", (req, res) => {
