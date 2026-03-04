@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import type { ChangeEvent } from "react"
 import { Copy, Loader2, Save } from "lucide-react"
 import { PageTransition } from "@/components/page-transition"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ export default function AdminContentPage() {
   const [uatPassword, setUatPassword] = useState("DemoBuyer#2026")
   const [uatDisplayName, setUatDisplayName] = useState("Demo Buyer")
   const [creatingUat, setCreatingUat] = useState(false)
+  const [uploadingDoc, setUploadingDoc] = useState(false)
 
   const selectedPage = useMemo(
     () => pages.find((item) => item.slug === selectedSlug),
@@ -89,6 +91,49 @@ export default function AdminContentPage() {
     }
   }
 
+  async function handleDocumentUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+    const lower = file.name.toLowerCase()
+    const supported = [".docx", ".txt", ".md"]
+    if (!supported.some((ext) => lower.endsWith(ext))) {
+      toast.error("Unsupported file type. Use .docx, .txt, or .md")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File is too large. Max size is 5MB.")
+      return
+    }
+    setUploadingDoc(true)
+    try {
+      let extracted = ""
+      if (lower.endsWith(".docx")) {
+        const mammoth = await import("mammoth")
+        const buffer = await file.arrayBuffer()
+        const result = await mammoth.convertToHtml({ arrayBuffer: buffer })
+        extracted = result.value
+      } else {
+        extracted = await file.text()
+      }
+      const normalized = extracted.replace(/\r\n/g, "\n").trim()
+      if (!normalized) {
+        toast.error("Document has no readable text.")
+        return
+      }
+      setContent(normalized)
+      if (!title.trim()) {
+        const fallbackTitle = file.name.replace(/\.[^.]+$/, "").trim()
+        if (fallbackTitle) setTitle(fallbackTitle)
+      }
+      toast.success("Document imported. Review and click Save Content.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to parse document")
+    } finally {
+      setUploadingDoc(false)
+    }
+  }
+
   async function handleCreateUat() {
     setCreatingUat(true)
     try {
@@ -131,7 +176,7 @@ export default function AdminContentPage() {
           <CardHeader>
             <CardTitle className="text-foreground">Public Pages</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Edits apply to FAQ, terms, privacy, and contact pages.
+              Edits apply to FAQ, terms, privacy, policy, contact, and contract pages.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -164,6 +209,20 @@ export default function AdminContentPage() {
                     value={content}
                     onChange={(event) => setContent(event.target.value)}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-foreground">Import from document (.docx, .txt, .md)</Label>
+                  <Input
+                    type="file"
+                    accept=".docx,.txt,.md"
+                    onChange={(event) => void handleDocumentUpload(event)}
+                    disabled={uploadingDoc || saving}
+                  />
+                  {uploadingDoc ? (
+                    <p className="text-xs text-muted-foreground">Extracting document text...</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Import fills the editor; click Save Content to publish.</p>
+                  )}
                 </div>
                 <Button onClick={() => void handleSavePage()} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

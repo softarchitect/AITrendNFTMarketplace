@@ -690,7 +690,7 @@ export function createAdminRoutes(services: Services): Router {
   router.post("/content-pages/:slug", (req, res) => {
     const schema = z.object({
       title: z.string().min(2).max(120),
-      content: z.string().min(1).max(20000)
+      content: z.string().min(1).max(200000)
     });
     const parsed = schema.safeParse(req.body ?? {});
     if (!parsed.success) {

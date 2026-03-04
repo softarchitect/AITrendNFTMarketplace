@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { PageTransition } from "@/components/page-transition"
 import { getPublicContentPage } from "@/lib/api"
+import { CmsRichContent } from "@/components/cms-rich-content"
 
 export default function PrivacyPage() {
   const [title, setTitle] = useState("Privacy Policy")
@@ -25,13 +26,8 @@ export default function PrivacyPage() {
         <h1 className="text-3xl font-bold text-foreground">{title}</h1>
         <p className="text-sm text-muted-foreground">Last updated: February 1, 2026</p>
 
-        <div className="mt-8 space-y-6 text-sm text-muted-foreground leading-relaxed">
-          {content
-            .split(/\r?\n/)
-            .filter((line) => line.trim().length > 0)
-            .map((line, index) => (
-              <p key={`${index}-${line.slice(0, 12)}`}>{line}</p>
-            ))}
+        <div className="mt-8">
+          <CmsRichContent content={content} />
         </div>
       </div>
     </PageTransition>

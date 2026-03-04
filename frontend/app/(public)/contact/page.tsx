@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { PageTransition } from "@/components/page-transition"
 import { getPublicContentPage } from "@/lib/api"
+import { CmsRichContent } from "@/components/cms-rich-content"
 
 export default function ContactPage() {
   const [title, setTitle] = useState("Contact")
@@ -24,13 +25,8 @@ export default function ContactPage() {
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
         <h1 className="text-3xl font-bold text-foreground">{title}</h1>
         <p className="text-sm text-muted-foreground">Need help? Reach us through the channels below.</p>
-        <div className="mt-8 space-y-4 text-sm text-muted-foreground leading-relaxed">
-          {content
-            .split(/\r?\n/)
-            .filter((line) => line.trim().length > 0)
-            .map((line, index) => (
-              <p key={`${index}-${line.slice(0, 12)}`}>{line}</p>
-            ))}
+        <div className="mt-8">
+          <CmsRichContent content={content} />
         </div>
       </div>
     </PageTransition>

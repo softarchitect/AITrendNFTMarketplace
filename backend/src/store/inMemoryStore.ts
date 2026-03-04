@@ -282,6 +282,17 @@ function createDefaultCmsPages(): CmsPageRecord[] {
       updatedBy: "system"
     },
     {
+      slug: "contract",
+      title: "Contract Information",
+      content: [
+        "Network: Ethereum Sepolia (chainId 11155111)",
+        "Contract: 0xa97a9dA0A4E1214E6784fCA0453A5cC141D0c7dA",
+        "Explorer: https://sepolia.etherscan.io/address/0xa97a9dA0A4E1214E6784fCA0453A5cC141D0c7dA"
+      ].join("\n"),
+      updatedAt: now,
+      updatedBy: "system"
+    },
+    {
       slug: "policy",
       title: "Platform Policy",
       content: [
