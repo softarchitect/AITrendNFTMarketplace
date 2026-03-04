@@ -145,7 +145,7 @@ async function main() {
     "utf8"
   );
 
-  console.log("\nMilestone 2 evidence generated:");
+  console.log("\nEvidence generated:");
   console.log(`- ${summary.artifacts.testLog}`);
   console.log(`- ${summary.artifacts.webhookReport}`);
   console.log(`- ${summary.artifacts.markdownReport}`);
@@ -170,7 +170,7 @@ function buildMarkdownReport(input: {
     ? `The deployed ${input.deploymentInfo.contractName} contract is available on ${input.deploymentInfo.network} at ${input.deploymentInfo.address} (${input.deploymentInfo.explorerUrl}).`
     : "The deployed contract reference can be attached from the current deployment record.";
   const clientReadyStatement = [
-    "Milestone 2 backend evidence is complete and validated.",
+    "Backend evidence is complete and validated.",
     "The automated test suite passed, and provider webhook scenarios for Vellis and Wert were executed successfully with expected payment state transitions.",
     deploymentLine,
     "Evidence artifacts are attached in this report for review and sign-off."
@@ -189,7 +189,7 @@ function buildMarkdownReport(input: {
     : [];
 
   return [
-    "# Milestone 2 Evidence Report",
+    "# Evidence Report",
     "",
     `Generated: ${input.generatedAt}`,
     "",

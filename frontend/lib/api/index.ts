@@ -190,6 +190,16 @@ interface WalletHandoverDto {
   requirements: string[]
 }
 
+interface AdminDocItemDto {
+  id: string
+  title: string
+  updatedAt: string
+}
+
+interface AdminDocContentDto extends AdminDocItemDto {
+  content: string
+}
+
 interface AdminSeriesDto {
   seriesId: number
   maxSupply: number
@@ -1036,6 +1046,14 @@ export async function getGatewayHealth(): Promise<GatewayHealthDto> {
 
 export async function getWalletHandoverStatus(): Promise<WalletHandoverDto> {
   return apiRequest<WalletHandoverDto>("/api/admin/wallet-handover")
+}
+
+export async function getAdminDocs(): Promise<AdminDocItemDto[]> {
+  return apiRequest<AdminDocItemDto[]>("/api/admin/docs")
+}
+
+export async function getAdminDocContent(docId: string): Promise<AdminDocContentDto> {
+  return apiRequest<AdminDocContentDto>(`/api/admin/docs/${encodeURIComponent(docId)}`)
 }
 
 export async function getWebhookLogs(): Promise<WebhookLogDto[]> {

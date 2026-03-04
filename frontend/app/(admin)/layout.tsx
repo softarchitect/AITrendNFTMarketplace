@@ -42,6 +42,7 @@ const navItems = [
   { href: "/admin/admin-users", label: "Admin Users", icon: Shield },
   { href: "/admin/partner-api-keys", label: "API Keys", icon: Key },
   { href: "/admin/content", label: "Content CMS", icon: FileText },
+  { href: "/admin/docs", label: "Documentation", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/system-status", label: "System Status", icon: Activity },
 ]

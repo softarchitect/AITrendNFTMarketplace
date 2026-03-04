@@ -11,7 +11,7 @@ function setup() {
   return { app, services };
 }
 
-describe("TrendMint Milestone 2 backend", () => {
+describe("TrendMint backend", () => {
   it("runs an automated mint cycle end-to-end", async () => {
     const { app } = setup();
 

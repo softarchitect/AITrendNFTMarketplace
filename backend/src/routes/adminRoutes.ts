@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 import { z } from "zod";
 import { config } from "../config";
 import { hashPassword, validatePasswordComplexity, verifyPassword } from "../security/password";
@@ -253,6 +255,64 @@ export function createAdminRoutes(services: Services): Router {
         setTimeout(() => reject(new Error("RPC timeout while loading series data")), timeoutMs);
       })
     ]);
+  }
+
+  async function resolveAdminDocs(): Promise<
+    Array<{
+      id: string;
+      title: string;
+      path: string;
+      updatedAt: string;
+    }>
+  > {
+    const backendRoot = path.resolve(__dirname, "..", "..");
+    const projectRoot = path.resolve(backendRoot, "..");
+    const docs: Array<{ id: string; title: string; path: string }> = [
+      {
+        id: "api-readme",
+        title: "Backend API Overview",
+        path: path.resolve(backendRoot, "README.md")
+      },
+      {
+        id: "operations-guide",
+        title: "Backend Operations Guide",
+        path: path.resolve(backendRoot, "BACKEND_OPERATIONS_GUIDE.md")
+      },
+      {
+        id: "handover-guide",
+        title: "Final Handover Guide",
+        path: path.resolve(projectRoot, "docs", "final-handover-guide.md")
+      }
+    ];
+
+    const finalCloseoutDir = path.resolve(backendRoot, "evidence", "final-closeout");
+    try {
+      const entries = await fs.readdir(finalCloseoutDir);
+      const mdFiles = entries.filter((fileName) => fileName.toLowerCase().endsWith(".md")).sort();
+      const latest = mdFiles.at(-1);
+      if (latest) {
+        docs.push({
+          id: "final-closeout-evidence",
+          title: "Final Closeout Evidence",
+          path: path.resolve(finalCloseoutDir, latest)
+        });
+      }
+    } catch {
+      // Optional artifact; do nothing if directory is absent in current environment.
+    }
+
+    const withStats = await Promise.all(
+      docs.map(async (item) => {
+        const stat = await fs.stat(item.path);
+        return {
+          id: item.id,
+          title: item.title,
+          path: item.path,
+          updatedAt: stat.mtime.toISOString()
+        };
+      })
+    );
+    return withStats;
   }
 
   router.post("/auth/login", (req, res) => {
@@ -636,6 +696,44 @@ export function createAdminRoutes(services: Services): Router {
         "Restart backend process with updated environment"
       ]
     });
+  });
+
+  router.get("/docs", async (_req, res) => {
+    try {
+      const docs = await resolveAdminDocs();
+      return res.json(
+        docs.map((item) => ({
+          id: item.id,
+          title: item.title,
+          updatedAt: item.updatedAt
+        }))
+      );
+    } catch (error) {
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to load admin docs"
+      });
+    }
+  });
+
+  router.get("/docs/:docId", async (req, res) => {
+    try {
+      const docs = await resolveAdminDocs();
+      const target = docs.find((item) => item.id === req.params.docId);
+      if (!target) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const content = await fs.readFile(target.path, "utf8");
+      return res.json({
+        id: target.id,
+        title: target.title,
+        updatedAt: target.updatedAt,
+        content
+      });
+    } catch (error) {
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to read admin document"
+      });
+    }
   });
 
   router.post("/uat/demo-user", (req, res) => {

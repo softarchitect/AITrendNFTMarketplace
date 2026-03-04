@@ -1,7 +1,7 @@
 {
   "name": "trendmint-backend",
   "version": "0.1.0",
-  "description": "TrendMint Milestone 2 backend services",
+  "description": "TrendMint backend services",
   "main": "dist/server.js",
   "type": "commonjs",
   "scripts": {

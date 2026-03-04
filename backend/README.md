@@ -1,6 +1,6 @@
-# TrendMint Backend — Milestone 2
+# TrendMint Backend
 
-This workspace implements the Milestone 2 backend stack for the agreed Phase 1 architecture:
+This workspace implements the backend stack for the agreed Phase 1 architecture:
 
 - trend ingestion (including pinned themes),
 - prompt building + AI adapter,
@@ -80,7 +80,7 @@ Write report to a file (directories are created automatically):
 npm run demo:webhooks:json -- --out docs/milestones/m2-webhook-demo-report.json
 ```
 
-Generate a complete Milestone 2 evidence bundle (tests + webhook JSON report + summary):
+Generate a complete evidence bundle (tests + webhook JSON report + summary):
 
 ```bash
 npm run evidence:m2
@@ -90,7 +90,7 @@ Artifacts are written to `docs/milestones/evidence/` with timestamped filenames,
 
 ## Notes
 
-- By default, Milestone 2 runs with mock adapters (`AI`, `IPFS`, `Payment`) to keep setup reproducible.
+- By default, runs with mock adapters (`AI`, `IPFS`, `Payment`) to keep setup reproducible.
 - If `RPC_URL`, `MINTER_PRIVATE_KEY`, and `CONTRACT_ADDRESS` are configured, mint/transfer uses chain mode.
 - Payment confirmation is enforced before transfer settlement in partner APIs.
 - AI adapters are provider-based:
