@@ -4,16 +4,20 @@ import { useEffect, useState } from "react"
 import { PageTransition } from "@/components/page-transition"
 import { getPublicContentPage } from "@/lib/api"
 import { CmsRichContent } from "@/components/cms-rich-content"
+import { extractCmsHeader, formatCmsUpdatedAt } from "@/lib/cms-header"
 
 export default function PolicyPage() {
   const [title, setTitle] = useState("Platform Policy")
+  const [lastUpdatedLabel, setLastUpdatedLabel] = useState("February 1, 2026")
   const [content, setContent] = useState("")
 
   useEffect(() => {
     getPublicContentPage("policy")
       .then((page) => {
-        setTitle(page.title || "Platform Policy")
-        setContent(page.content)
+        const extracted = extractCmsHeader(page.content ?? "")
+        setTitle(extracted.title || page.title || "Platform Policy")
+        setLastUpdatedLabel(extracted.lastUpdated || formatCmsUpdatedAt(page.updatedAt))
+        setContent(extracted.content)
       })
       .catch(() => {
         setContent("")
@@ -24,7 +28,7 @@ export default function PolicyPage() {
     <PageTransition>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
         <h1 className="text-3xl font-bold text-foreground">{title}</h1>
-        <p className="text-sm text-muted-foreground">Last updated: February 1, 2026</p>
+        <p className="text-sm text-muted-foreground">Last updated: {lastUpdatedLabel}</p>
 
         <div className="mt-8">
           <CmsRichContent content={content} />

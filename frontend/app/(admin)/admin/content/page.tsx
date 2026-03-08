@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { extractCmsHeader } from "@/lib/cms-header"
 import {
   createUatDemoUser,
   getAdminContentPages,
@@ -121,8 +122,11 @@ export default function AdminContentPage() {
         toast.error("Document has no readable text.")
         return
       }
-      setContent(normalized)
-      if (!title.trim()) {
+      const header = extractCmsHeader(normalized)
+      setContent(header.content || normalized)
+      if (header.title) {
+        setTitle(header.title)
+      } else if (!title.trim()) {
         const fallbackTitle = file.name.replace(/\.[^.]+$/, "").trim()
         if (fallbackTitle) setTitle(fallbackTitle)
       }

@@ -1,21 +1,71 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, Plus, RefreshCw } from "lucide-react"
+import { CheckCircle2, Circle, Eye, EyeOff, Loader2, Plus, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageTransition } from "@/components/page-transition"
 import { createAdminAccount, getAdminAccounts, type AdminAccountDto, updateAdminAccount } from "@/lib/api"
+import { ApiError } from "@/lib/api/client"
 import { getAdminEmail } from "@/lib/auth/admin"
 import { toast } from "sonner"
+
+function validateStrongPassword(password: string): string[] {
+  const errors: string[] = []
+  if (password.length < 10) errors.push("at least 10 characters")
+  if (!/[A-Z]/.test(password)) errors.push("an uppercase letter")
+  if (!/[a-z]/.test(password)) errors.push("a lowercase letter")
+  if (!/[0-9]/.test(password)) errors.push("a number")
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push("a special character")
+  return errors
+}
+
+function getPasswordChecklist(password: string): Array<{ label: string; pass: boolean }> {
+  return [
+    { label: "At least 10 characters", pass: password.length >= 10 },
+    { label: "At least one uppercase letter", pass: /[A-Z]/.test(password) },
+    { label: "At least one lowercase letter", pass: /[a-z]/.test(password) },
+    { label: "At least one number", pass: /[0-9]/.test(password) },
+    { label: "At least one special character", pass: /[^A-Za-z0-9]/.test(password) },
+  ]
+}
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    if (Array.isArray(error.data)) {
+      return error.data.map((item) => String(item)).join(", ")
+    }
+    if (error.data && typeof error.data === "object" && "error" in error.data) {
+      const value = (error.data as { error: unknown }).error
+      if (Array.isArray(value)) return value.map((item) => String(item)).join(", ")
+      if (typeof value === "string") return value
+    }
+    return error.message || fallback
+  }
+  if (error instanceof Error) return error.message
+  return fallback
+}
 
 export default function AdminUsersManagementPage() {
   const [accounts, setAccounts] = useState<AdminAccountDto[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [resettingId, setResettingId] = useState<string | null>(null)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resetTarget, setResetTarget] = useState<AdminAccountDto | null>(null)
+  const [resetPassword, setResetPassword] = useState("")
+  const [resetPasswordVisible, setResetPasswordVisible] = useState(false)
   const [email, setEmail] = useState("")
   const [displayName, setDisplayName] = useState("")
   const [password, setPassword] = useState("")
@@ -46,8 +96,8 @@ export default function AdminUsersManagementPage() {
       setDisplayName("")
       setPassword("")
       toast.success("Admin account created")
-    } catch {
-      toast.error("Failed to create admin account")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to create admin account"))
     } finally {
       setCreating(false)
     }
@@ -58,25 +108,44 @@ export default function AdminUsersManagementPage() {
       const updated = await updateAdminAccount(account.id, { isActive })
       setAccounts((prev) => prev.map((item) => (item.id === account.id ? updated : item)))
       toast.success(`Account ${isActive ? "activated" : "deactivated"}`)
-    } catch {
-      toast.error("Failed to update account status")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to update account status"))
     }
   }
 
-  async function handleResetPassword(account: AdminAccountDto) {
-    const nextPassword = window.prompt(`Set a new password for ${account.email}`, "")
-    if (!nextPassword) return
-    if (nextPassword.length < 8) {
-      toast.error("Password must be at least 8 characters")
+  function openResetPasswordDialog(account: AdminAccountDto) {
+    setResetTarget(account)
+    setResetPassword("")
+    setResetPasswordVisible(false)
+    setResetDialogOpen(true)
+  }
+
+  async function handleResetPasswordConfirm() {
+    if (!resetTarget) return
+    const nextPassword = resetPassword
+    const issues = validateStrongPassword(nextPassword)
+    if (issues.length > 0) {
+      toast.error(`Password must include ${issues.join(", ")}`)
       return
     }
     try {
-      await updateAdminAccount(account.id, { password: nextPassword })
-      toast.success("Password updated")
-    } catch {
-      toast.error("Failed to update password")
+      setResettingId(resetTarget.id)
+      await updateAdminAccount(resetTarget.id, { password: nextPassword })
+      toast.success(`Password updated for ${resetTarget.email}. Sign in with this same email.`)
+      setResetDialogOpen(false)
+      setResetTarget(null)
+      setResetPassword("")
+      setResetPasswordVisible(false)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to update password"))
+    } finally {
+      setResettingId(null)
     }
   }
+
+  const resetPasswordIssues = validateStrongPassword(resetPassword)
+  const resetPasswordValid = resetPassword.length > 0 && resetPasswordIssues.length === 0
+  const resetChecklist = getPasswordChecklist(resetPassword)
 
   return (
     <PageTransition>
@@ -162,10 +231,15 @@ export default function AdminUsersManagementPage() {
                         variant="outline"
                         size="sm"
                         className="gap-1 bg-transparent"
-                        onClick={() => void handleResetPassword(account)}
+                        onClick={() => openResetPasswordDialog(account)}
+                        disabled={resettingId === account.id}
                       >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        Reset Password
+                        {resettingId === account.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        {resettingId === account.id ? "Resetting..." : "Reset Password"}
                       </Button>
                     </div>
                   </div>
@@ -175,6 +249,102 @@ export default function AdminUsersManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={resetDialogOpen}
+        onOpenChange={(open) => {
+          setResetDialogOpen(open)
+          if (!open) {
+            setResetTarget(null)
+            setResetPassword("")
+            setResetPasswordVisible(false)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Admin Password</DialogTitle>
+            <DialogDescription>
+              {resetTarget
+                ? `Set a new password for ${resetTarget.email}.`
+                : "Set a new password for this admin account."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="reset-password-input">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="reset-password-input"
+                  type={resetPasswordVisible ? "text" : "password"}
+                  placeholder="10+ chars, upper/lower/number/symbol"
+                  value={resetPassword}
+                  onChange={(event) => setResetPassword(event.target.value)}
+                  className="pr-10"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  aria-label={resetPasswordVisible ? "Hide password" : "Show password"}
+                  onClick={() => setResetPasswordVisible((current) => !current)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {resetPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
+              <p className="mb-2 font-medium text-foreground">Password requirements</p>
+              <div className="space-y-1.5">
+                {resetChecklist.map((item) => (
+                  <p
+                    key={item.label}
+                    className={`flex items-center gap-2 ${item.pass ? "text-green-500" : "text-muted-foreground"}`}
+                  >
+                    {item.pass ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+                    <span>{item.label}</span>
+                  </p>
+                ))}
+              </div>
+              {resetPassword.length > 0 && (
+                <p className={`mt-2 font-medium ${resetPasswordValid ? "text-green-500" : "text-red-500"}`}>
+                  {resetPasswordValid ? "All checks passed." : "Password does not meet all requirements."}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="bg-transparent"
+              onClick={() => {
+                setResetDialogOpen(false)
+                setResetTarget(null)
+                setResetPassword("")
+                setResetPasswordVisible(false)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleResetPasswordConfirm()}
+              disabled={!resetPasswordValid || !resetTarget || resettingId === resetTarget?.id}
+              className="gap-2"
+            >
+              {resetTarget && resettingId === resetTarget.id ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Password"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   )
 }

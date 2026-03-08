@@ -26,6 +26,19 @@ type TrendSourceRateLimitMode = "Standard" | "Aggressive" | "Conservative";
 const DEFAULT_TREND_SOURCE_CATALOG = ["twitter", "instagram", "reddit"] as const;
 const DEFAULT_ADMIN_TRENDING_THEMES = ["AI Art", "Future Cities", "Cultural Fusion"] as const;
 
+function sanitizePartialRecord<T extends Record<string, unknown>>(input: T): Partial<T> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as Partial<T>;
+}
+
+function resolveDisplayName(displayName: unknown, email: string): string {
+  if (typeof displayName === "string") {
+    const trimmed = displayName.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  return normalizedEmail || "Unknown User";
+}
+
 export type AdminThemeType = "Trending" | "Pinned";
 
 export interface AdminThemeRecord {
@@ -869,22 +882,24 @@ export class InMemoryStore {
   }
 
   upsertAdminUser(input: Omit<AdminUserRecord, "id" | "createdAt" | "updatedAt"> & { id?: string }): AdminUserRecord {
-    const existingById = input.id ? this.adminUsers.get(input.id) : undefined;
+    const sanitizedInput = sanitizePartialRecord(input);
+    const existingById = sanitizedInput.id ? this.adminUsers.get(String(sanitizedInput.id)) : undefined;
     const existingByEmail = this.findAdminUserByEmail(input.email);
     const existing = existingById ?? existingByEmail;
     const now = new Date().toISOString();
     const user: AdminUserRecord = existing
       ? {
           ...existing,
-          ...input,
+          ...sanitizedInput,
           email: input.email.toLowerCase(),
+          displayName: resolveDisplayName(sanitizedInput.displayName ?? existing.displayName, input.email),
           updatedAt: now
         }
       : {
-          id: input.id ?? randomUUID(),
+          id: (sanitizedInput.id as string | undefined) ?? randomUUID(),
           email: input.email.toLowerCase(),
           passwordHash: input.passwordHash,
-          displayName: input.displayName,
+          displayName: resolveDisplayName(sanitizedInput.displayName, input.email),
           role: "Admin",
           isActive: input.isActive,
           createdAt: now,
@@ -901,10 +916,12 @@ export class InMemoryStore {
     if (!current) {
       throw new Error(`Admin user ${userId} not found`);
     }
+    const sanitizedPatch = sanitizePartialRecord(patch);
     const next: AdminUserRecord = {
       ...current,
-      ...patch,
-      email: (patch.email ?? current.email).toLowerCase(),
+      ...sanitizedPatch,
+      email: (sanitizedPatch.email as string | undefined ?? current.email).toLowerCase(),
+      displayName: resolveDisplayName(sanitizedPatch.displayName ?? current.displayName, sanitizedPatch.email as string | undefined ?? current.email),
       updatedAt: new Date().toISOString()
     };
     this.adminUsers.set(userId, next);
@@ -961,22 +978,24 @@ export class InMemoryStore {
       notificationPreferences?: UserRecord["notificationPreferences"];
     }
   ): UserRecord {
-    const existingById = input.id ? this.users.get(input.id) : undefined;
+    const sanitizedInput = sanitizePartialRecord(input);
+    const existingById = sanitizedInput.id ? this.users.get(String(sanitizedInput.id)) : undefined;
     const existingByEmail = this.findUserByEmail(input.email);
     const existing = existingById ?? existingByEmail;
     const now = new Date().toISOString();
     const user: UserRecord = existing
       ? {
           ...existing,
-          ...input,
+          ...sanitizedInput,
           email: input.email.toLowerCase(),
+          displayName: resolveDisplayName(sanitizedInput.displayName ?? existing.displayName, input.email),
           updatedAt: now
         }
       : {
-          id: input.id ?? randomUUID(),
+          id: (sanitizedInput.id as string | undefined) ?? randomUUID(),
           email: input.email.toLowerCase(),
           passwordHash: input.passwordHash,
-          displayName: input.displayName,
+          displayName: resolveDisplayName(sanitizedInput.displayName, input.email),
           role: "User",
           kycStatus: input.kycStatus ?? "Verified",
           twoFAEnabled: input.twoFAEnabled ?? false,
@@ -1002,10 +1021,12 @@ export class InMemoryStore {
     if (!current) {
       throw new Error(`User ${userId} not found`);
     }
+    const sanitizedPatch = sanitizePartialRecord(patch);
     const next: UserRecord = {
       ...current,
-      ...patch,
-      email: (patch.email ?? current.email).toLowerCase(),
+      ...sanitizedPatch,
+      email: (sanitizedPatch.email as string | undefined ?? current.email).toLowerCase(),
+      displayName: resolveDisplayName(sanitizedPatch.displayName ?? current.displayName, sanitizedPatch.email as string | undefined ?? current.email),
       updatedAt: new Date().toISOString()
     };
     this.users.set(userId, next);
@@ -1898,7 +1919,7 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
       id: row.id,
       email: row.email,
       passwordHash: row.password_hash,
-      displayName: row.display_name,
+      displayName: resolveDisplayName(row.display_name, row.email),
       role: "Admin",
       isActive: Boolean(row.is_active),
       createdAt: new Date(row.created_at).toISOString(),
@@ -1918,7 +1939,7 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
       id: row.id,
       email: row.email,
       passwordHash: row.password_hash,
-      displayName: row.display_name,
+      displayName: resolveDisplayName(row.display_name, row.email),
       role: "User",
       kycStatus:
         row.kyc_status === "NotStarted" ||
@@ -1967,7 +1988,7 @@ async function loadStoreSnapshotFromPostgres(instance: InMemoryStore): Promise<b
       token: row.token,
       userId: row.user_id,
       email: row.email,
-      displayName: row.display_name,
+      displayName: resolveDisplayName(row.display_name, row.email),
       role: "User",
       expiresAt: new Date(row.expires_at).toISOString(),
       createdAt: new Date(row.created_at).toISOString()
@@ -2263,7 +2284,7 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
           row.id,
           row.email,
           row.passwordHash,
-          row.displayName,
+          resolveDisplayName(row.displayName, row.email),
           row.role,
           row.isActive,
           row.createdAt,
@@ -2278,7 +2299,7 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
       await client.query(
         `INSERT INTO admin_sessions (token, user_id, email, display_name, role, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [row.token, row.userId, row.email, row.displayName, row.role, row.expiresAt, row.createdAt]
+        [row.token, row.userId, row.email, resolveDisplayName(row.displayName, row.email), row.role, row.expiresAt, row.createdAt]
       );
     }
 
@@ -2292,7 +2313,7 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
           row.id,
           row.email,
           row.passwordHash,
-          row.displayName,
+          resolveDisplayName(row.displayName, row.email),
           row.role,
           row.kycStatus,
           row.twoFAEnabled,
@@ -2316,7 +2337,7 @@ async function saveStoreSnapshotToPostgres(instance: InMemoryStore): Promise<voi
       await client.query(
         `INSERT INTO user_sessions (token, user_id, email, display_name, role, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [row.token, row.userId, row.email, row.displayName, row.role, row.expiresAt, row.createdAt]
+        [row.token, row.userId, row.email, resolveDisplayName(row.displayName, row.email), row.role, row.expiresAt, row.createdAt]
       );
     }
 
