@@ -134,8 +134,8 @@ export function createMarketplaceRoutes(services: Services): Router {
       .getThemes()
       .filter((theme) => theme.active)
       .sort((a, b) => a.priority - b.priority)
-      .map((theme) => theme.name)
-      .slice(0, maxThemes);
+      .map((theme) => theme.name.trim())
+      .filter((theme) => theme.length > 0);
     const listingThemes = Array.from(
       new Set(
         [...services.db.listings.values()]
@@ -144,7 +144,16 @@ export function createMarketplaceRoutes(services: Services): Router {
           .filter((theme) => theme.length > 0)
       )
     );
-    const themes = activeThemes.length > 0 ? activeThemes : listingThemes.slice(0, maxThemes);
+    const recentTrendTopics = Array.from(
+      new Set(
+        [...services.db.trends.values()]
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((item) => item.topic.trim())
+          .filter((topic) => topic.length > 0)
+      )
+    );
+    const mergedThemes = Array.from(new Set([...activeThemes, ...recentTrendTopics, ...listingThemes]));
+    const themes = mergedThemes.slice(0, maxThemes);
     const latestTrendAt = [...services.db.trends.values()]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.createdAt;
     return res.json({

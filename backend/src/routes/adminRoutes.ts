@@ -1515,7 +1515,38 @@ export function createAdminRoutes(services: Services): Router {
     }
     services.db.updateAdminControls(parsed.data);
     appendAuditLog("mint_controls_updated", parsed.data, res.locals.adminActorEmail);
-    return res.json(services.db.adminControls);
+
+    const shouldRefreshThemesNow =
+      parsed.data.trendTopicLimit !== undefined || parsed.data.trendRefreshIntervalHours !== undefined;
+    if (!shouldRefreshThemesNow) {
+      return res.json(services.db.adminControls);
+    }
+
+    return services.trends
+      .ingestTrends(services.db.adminControls.trendTopicLimit || config.trends.fetchLimit)
+      .then((items) => {
+        services.trends.syncTrendingThemesFromTopics(items, services.db.adminControls.trendTopicLimit);
+        appendAuditLog(
+          "trend_pool_resynced_after_settings_update",
+          {
+            count: items.length,
+            trendTopicLimit: services.db.adminControls.trendTopicLimit
+          },
+          res.locals.adminActorEmail
+        );
+        return res.json(services.db.adminControls);
+      })
+      .catch((error) => {
+        appendAuditLog(
+          "trend_pool_resync_failed_after_settings_update",
+          {
+            reason: error instanceof Error ? error.message : "Trend refresh failed",
+            trendTopicLimit: services.db.adminControls.trendTopicLimit
+          },
+          res.locals.adminActorEmail
+        );
+        return res.json(services.db.adminControls);
+      });
   });
 
   router.get("/editions", (_req, res) => {

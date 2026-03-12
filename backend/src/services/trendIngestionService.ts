@@ -15,7 +15,14 @@ const DEFAULT_SIMULATED_TOPICS = [
   "desert future architecture",
   "AI-assisted calligraphy",
   "sustainable fashion week",
-  "space economy in MENA"
+  "space economy in MENA",
+  "renewable energy adoption",
+  "digital health breakthroughs",
+  "fintech inclusion trends",
+  "e-commerce personalization",
+  "green mobility expansion",
+  "immersive media experiences",
+  "robotics in logistics"
 ];
 
 export class TrendIngestionService {
@@ -268,6 +275,27 @@ export class TrendIngestionService {
     return titleCased.slice(0, 48).trim();
   }
 
+  private buildThemeCandidates(topics: TrendTopic[]): string[] {
+    const fromCurrentBatch = topics
+      .filter((item) => !item.pinned)
+      .map((item) => this.normalizeTopicToThemeName(item.topic));
+    const fromRecentTopics = this.getRecentTopics(120)
+      .filter((item) => !item.pinned)
+      .map((item) => this.normalizeTopicToThemeName(item.topic));
+    const fromDefaults = DEFAULT_SIMULATED_TOPICS.map((topic) => this.normalizeTopicToThemeName(topic));
+
+    const merged = [...fromCurrentBatch, ...fromRecentTopics, ...fromDefaults]
+      .filter((name): name is string => typeof name === "string" && name.length > 0);
+
+    return Array.from(new Set(merged.map((name) => name.trim()))).filter((name) => name.length > 0);
+  }
+
+  private rotateCandidates(candidates: string[]): string[] {
+    if (candidates.length <= 1) return candidates;
+    const rotationSeed = (this.db.mintCounters.perDay + this.db.trends.size) % candidates.length;
+    return [...candidates.slice(rotationSeed), ...candidates.slice(0, rotationSeed)];
+  }
+
   async ingestLiveTrends(limit = config.trends.fetchLimit): Promise<TrendTopic[]> {
     const output: TrendTopic[] = [];
     for (const theme of this.db.pinnedThemes) {
@@ -347,12 +375,8 @@ export class TrendIngestionService {
 
   syncTrendingThemesFromTopics(topics: TrendTopic[], limit: number): AdminThemeRecord[] {
     const maxThemes = Math.max(1, Math.min(10, limit));
-    const selectedNames = Array.from(new Set(
-      topics
-        .filter((item) => !item.pinned)
-        .map((item) => this.normalizeTopicToThemeName(item.topic))
-        .filter((name): name is string => typeof name === "string" && name.length > 0)
-    )).slice(0, maxThemes);
+    const candidates = this.rotateCandidates(this.buildThemeCandidates(topics));
+    const selectedNames = candidates.slice(0, maxThemes);
     if (selectedNames.length === 0) {
       return this.getThemes();
     }
